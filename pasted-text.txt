@@ -1,0 +1,1095 @@
+diff --git a/README.md b/README.md
+index ab2797c..e43fdad 100644
+--- a/README.md
++++ b/README.md
+@@ -1,59 +1,51 @@
+ # Epic Battle Simulator
+ 
+-React / Vite / Three.js による、3D戦争シミュレーターです。ゆるい等身のキャラクターが戦う、独自デザインの非公式Webゲームです。
+-既存ゲームのキャラクター・アセットは使っていません。兵種の能力、資金、勝利条件はすべて本アプリ独自のものです。
++React / Vite / Three.js による3D戦争シミュレーター。ゆるい等身のキャラクターが戦う、全25兵種・4つの戦場・全20ステージを備えた独自デザインのWebゲームです。
+ 
+ ## 遊び方
+ 
+-1. 「戦場へ」で配置フェーズに入ります(16対16の初期部隊。時間と資金回復は停止中)。
+-2. 下部の**勢力タブ**(王国軍・蛮族・神秘・不死)から兵種カードを選び、青い自陣をクリック/タップして増援を配置します。
+-   配置したキャラは空から落下して着地します。「×5」ボタンかShift+クリックで最大5体をまとめて配置できます。
+-3. 「戦闘開始」で両軍が自動交戦します。部隊を選択して移動や集中攻撃を指示できます。
+-4. どちらかの軍が全滅すると増援が止まり、残った飛び道具の着弾後に決着します。両軍全滅は引き分けです。
++- **ストーリー**: 全4章・20ステージの戦役モード。敵の編成と地形障害物に合わせて予算内で部隊を配置し、勝利すると次のステージと新しい兵種が解放されます（戦闘中の資金回復や増援はありません）。
++- **カスタム戦**: 全25兵種を使用可能。「味方配置 / 敵配置」で両軍を自由に編成でき、「全消去」でゼロから組めます（予算は各軍3000、各軍上限50体）。「戦場」ボタンで4つの戦場マップ（障害物付き）を自由に切り替えられます。
++- **兵種図鑑**: 全25兵種が正面を向いて整列し、ドラッグで回り込んで造形やサイズ感を観察できます。
+ 
+-「兵種見本を見る」(メニュー)では、全15兵種が正面を向いて並び、名前と役割が表示されます。右ドラッグで回り込んで観察できます。
++### 4勢力・全25兵種
+ 
+-### 兵種(15種)
+-
+-| 勢力 | 兵種 | 特徴 |
++| 勢力 | 兵種 | 主な特徴 |
+ | --- | --- | --- |
+-| 王国軍 | 槍兵 / 盾兵 / 弓兵 / 弩兵 / 重騎兵 | 盾兵は被ダメージ45%軽減。弩兵は低速・高威力・高弾速。騎兵は高速突撃 |
+-| 蛮族 | オーク戦士 / 狂戦士 / 爆弾兵 / 巨人 | 狂戦士は負傷するほど攻撃が加速。爆弾兵は放物線の範囲攻撃。巨人は周囲を薙ぎ払いノックバックに強い |
+-| 神秘 | エルフ狩人 / 影の刺客 / 魔術師 / 僧侶 | 刺客は射手・術師・僧侶を優先して狙う。僧侶は負傷した味方を自動回復し、後方についていく |
+-| 不死 | ゾンビ / スケルトン | 安価な物量部隊 |
++| **王国軍 (8種)** | 槍兵 / 盾兵 / 弓兵 / 弩兵 / 剣士 / 戟兵 / 重騎兵 / 聖騎士 | 盾兵・剣士・聖騎士は正面からの被ダメージを追加軽減（盾ブロック）。重騎兵は助走速度に応じて初撃の威力と衝撃が最大1.5倍（再加速で再装填）。聖騎士は前線で戦いながら周囲の味方全員を範囲回復 |
++| **蛮族 (7種)** | オーク戦士 / 狂戦士 / 投槍兵 / 爆弾兵 / 呪術師 / トロール / 巨人 | 狂戦士は負傷するほど攻撃が加速。爆弾兵は放物線の範囲爆破。呪術師は範囲鈍足。トロールは常時自己再生。巨人は大棍棒で周囲を薙ぎ払う |
++| **神秘 (6種)** | エルフ狩人 / 修道武僧 / 影の刺客 / 魔術師 / 氷の術師 / 僧侶 | 刺客は射手・術師・僧侶を優先して狙う。魔術師は追尾範囲魔法、氷の術師は範囲凍結減速。僧侶は後方に控え負傷した味方を回復 |
++| **不死 (4種)** | ゾンビ / スケルトン / 骨弓兵 / 吸血鬼 | 低コストで数を揃えやすい物量部隊と、与えた実ダメージの一部を吸収して回復し続ける吸血鬼 |
++
++### 戦闘ルール・戦術要素
+ 
+-### 操作
++- **方向ダメージと盾ブロック**: 側面・背後からの攻撃はダメージが **1.3倍** になります。逆に盾を持つ兵種（盾兵・剣士・聖騎士）が正面から攻撃を受けると、基本防御に加えて盾による追加軽減が発動し白い火花が散ります。
++- **ノックバックと吹っ飛び物理**: 衝撃力の強い攻撃（重騎兵の突撃、巨人、爆弾など）を受けると空中に吹き飛ばされ、着地後に地面を滑って一時行動不能になります。トドメの一撃でも勢いを保ったまま吹っ飛びます。
++- **戦場の地形障害物**: 各章の戦場（辺境の荒野・裂け谷・霜の峠・王都決戦）には石碑や岩柱などの障害物があり、部隊は障害物を避けて側方へ自動迂回します。
++
++### 操作方法
+ 
+ | 操作 | 動作 |
+ | --- | --- |
+-| 左クリック / 左ドラッグ | 味方の選択 / 範囲選択 (Shiftで追加) |
+-| 右クリック | 移動、敵を指して集中攻撃、配置モード解除 |
+-| 右ドラッグ / WASD・矢印 | カメラ回転 / 移動 |
++| 左クリック / ドラッグ | 配置モード時は連続配置 / 選択時は味方の選択・範囲選択 |
++| 右クリック | 移動命令・敵を指定して集中攻撃 / 配置モード解除 |
++| 右ドラッグ / WASD・矢印 | カメラ回転 / カメラ平行移動 |
++| カメラモード (C) | 左半分のドラッグで平行移動 / 右半分のドラッグで回転 |
+ | ホイール | カーソル位置を中心に拡大縮小 |
+-| ミニマップをクリック | 指定地点へカメラ移動 |
+-| 1〜5 / Q・E | 兵種の選択 / 勢力タブの切り替え |
+-| Shift+クリック・B | 最大5体をまとめて配置 |
+-| Ctrl+A / ダブルクリック | 全選択 |
+-| G / H / F / Home | 総攻撃 / その場で防衛 / 選択部隊へ移動 / カメラリセット |
+-| Space / Esc / M | 開始・一時停止 / キャンセル・再開 / ミュート |
+-
+-**タッチ**: タップで選択・配置・移動命令、1本指ドラッグで掴んで視点移動、2本指ピンチで指の位置を中心に拡大縮小(同時に移動)、
+-長押ししてからドラッグで範囲選択、ダブルタップで全選択、「×5」で5体まとめて配置。画面右上の「?」に全操作の一覧があります。
++| ミニマップをクリック・ドラッグ | 指定地点へカメラ移動・連続追従 |
++| 「範囲選択」ボタン | 1タップ/クリックで範囲選択モードに切替 |
++| 1〜8 / Q・E | 兵種の選択 / 勢力タブの切り替え |
++| Shift+クリック / B | 最大5体をまとめて配置（×5モード） |
++| Ctrl+A / ダブルクリック | 味方を全選択 |
++| G / H / F / Home | 総攻撃 / 待機 / 選択部隊へ寄る / カメラリセット |
++| Space / Esc / M | 戦闘開始・一時停止 / 解除・再開 / 消音切替 |
+ 
+-画面を離れると戦闘は自動停止します。動作が重い場合は「画質: 軽量」を選ぶか、約4秒間30FPSを下回ると自動で軽量画質に切り替わります。
++## 設計構成
+ 
+-## 設計
+-
+-- `src/game/simulation.ts`: 固定時間刻みの戦闘ロジック。敵味方判定、特性(軽減・範囲薙ぎ・回復・暗殺優先・怒り加速・放物線爆弾)、
+-  ノックバック、陣形命令、資金、勝敗。描画・DOM・実時間タイマーに依存しません。
+-- `src/game/units.ts`: 兵種定義と勢力。`src/game/rigs.ts`: キャラクター造形。全ヒューマノイドに同じ構造の目
+-  (白目・瞳・ハイライト・眉・口)を持たせています。
+-- **ボーンベイク描画**: 各ボーンの静的メッシュを頂点カラーで1つのジオメトリに結合し、`src/game/unit-renderer.ts` が
+-  InstancedMesh で描画します。1体あたりのCPU負荷は約60→約10行列更新です。
+-- `src/game/engine.ts`: 3Dシーン、スプリング式モーション(攻撃様式ごとの溜め・打撃・余韻、被弾の反動、転倒、
+-  配置時の落下と着地スクワッシュ)、入力、カメラ、オーバーレイ、サウンド、リソース解放。
+-  パンは「掴んだ地面の点が指に追従する」厳密なレイキャスト方式です。長押し判定はタイマーではなくイベント時刻で行うため、
+-  描画が重くてもタップが長押しに化けません。
++- `src/game/simulation.ts`: 固定時間刻み（1/60秒）の戦闘ロジック。方向別ダメージ、正面盾軽減、突撃ボーナス、範囲回復、実ダメージ比例の吸血、鈍足、障害物迂回ステアリング、吹っ飛び物理を管理。
++- `src/game/terrain.ts` & `src/game/stages3d.ts`: 4章それぞれの地形障害物データと、空・霧・地面テクスチャ・3D障害物・装飾を含む戦場環境生成。
++- `src/game/units.ts` & `src/game/rigs.ts` & `src/game/unit-renderer.ts`: 全25兵種の定義、ボーンベイク方式のキャラクター造形、および `InstancedMesh` による高速バッチ描画。
++- `src/game/engine.ts`: 3Dシーン管理、武器スタイル別の立体的なスプリング式プロシージャルモーション、入力制御、2Dオーバーレイ・ミニマップ描画、効果音。
+ 
+ ## 開発・検証
+ 
+@@ -61,21 +53,9 @@ React / Vite / Three.js による、3D戦争シミュレーターです。ゆる
+ npm install
+ npm run dev
+ npx tsc --noEmit
+-npx tsx --test tests/simulation.test.ts tests/units.test.ts tests/rendering.test.ts
+-npx playwright install --with-deps chromium
++npx tsx --test tests/simulation.test.ts tests/units.test.ts tests/rendering.test.ts tests/refinements.test.ts
+ npx playwright test
+-npm run build && TEST_PRODUCTION=1 npx playwright test
++npm run build
+ ```
+ 
+-- `tests/simulation.test.ts`, `tests/units.test.ts`: 全兵種の攻撃・資金・上限・倍速一致・一時停止・勝敗・再初期化に加え、
+-  軽減、ノックバック、回復、薙ぎ払い、爆弾、暗殺優先、怒り加速、見本モードの回帰テスト。
+-- `tests/rendering.test.ts`: 全キャラのベイク結果、目の構造、骨格の独立性、インスタンス描画の行列、騎兵の向き。
+-- `tests/browser.spec.ts`: Chromium上で配置・タブ・ホットキー・選択・指揮・一時停止・再開始・見本モード・ヘルプ・
+-  ホイールズーム・ピンチ・2本指移動・ダブルタップ・長押し範囲選択・戦闘終了・WebGL非対応時の表示を検証。
+-
+-## 制約
+-
+-WebGL 2が必要です。生存部隊は各軍70体まで。描画性能はGPUと画面解像度に依存します。
+-スマートフォンの確認はChromiumのタッチエミュレーションによるもので、全実機の動作保証ではありません。
+-オンライン対戦、兵士への憑依、障害物を考慮した経路探索、物理ベースのラグドールは実装していません
+-(転倒はスプリングとアニメーションによる擬似表現です)。
++詳細は [docs/verification.md](docs/verification.md) を参照してください。
+diff --git a/docs/verification.md b/docs/verification.md
+new file mode 100644
+index 0000000..b7b3a05
+--- /dev/null
++++ b/docs/verification.md
+@@ -0,0 +1,21 @@
++# 動作確認・検証手順
++
++## 実行方法
++
++```sh
++npm install
++npm run dev
++npx tsc --noEmit
++npx tsx --test tests/simulation.test.ts tests/units.test.ts tests/rendering.test.ts tests/refinements.test.ts
++npx playwright install --with-deps chromium
++npm run build
++TEST_PRODUCTION=1 npx playwright test
++```
++
++## 確認対象
++
++- `tests/refinements.test.ts`: 正面盾防御とブロックイベント、側背面1.3倍ダメージ、重騎兵の初撃突撃ボーナス（最大1.5倍）、吸血鬼の実ダメージ上限に応じたHP吸収、呪術師・氷の術師の移動・溜め・クールダウン減速、聖騎士の前進と複数味方の範囲回復、両軍編成と全消去、各章の地形障害物判定と自動迂回。
++- `tests/simulation.test.ts`: 固定予算、50体上限、全25兵種の命中・索敵、配置・取り消し、1x/2x/4x倍速一致、一時停止、再開始。
++- `tests/units.test.ts`: 全20ステージの編成・解放順、無策な単一兵種スパムに対する難易度ガード、戦術的な混成部隊による全20ステージ攻略検証、致死ダメージ時の死体吹っ飛び物理。
++- `tests/rendering.test.ts`: 全25兵種の骨格、頂点カラー、インスタンス描画、騎兵の向き、4章すべての3D戦場環境構築とリソース解放。
++- `tests/browser.spec.ts`: PC・タッチ操作、カメラモード（左半分移動・右半分回転）、ピンチズーム、長押し範囲選択およびワンタップ範囲選択ボタン、カスタム戦の両軍配置・全消去・戦場マップ切替、横スクロールとモバイル・ランドスケープ表示。
+diff --git a/src/App.tsx b/src/App.tsx
+index 5bf582f..aff7456 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -90,6 +90,7 @@ function UnitStats({ d }: { d: UnitDef }) {
+       <span className="stat-chip">攻撃<b className="text-red-400">{d.dmg}</b></span>
+       <span className="stat-chip">射程<b className="text-sky-400">{d.range}</b></span>
+       {d.armor > 0 && <span className="stat-chip">防御<b className="text-violet-300">{Math.round(d.armor * 100)}%</b></span>}
++      {d.shield && <span className="stat-chip">正面盾<b className="text-cyan-300">+{Math.round(d.shield * 100)}%</b></span>}
+       {d.impact / d.mass > 1.6 && <span className="stat-chip">衝撃<b className="text-amber-300">大</b></span>}
+     </span>
+   );
+@@ -160,7 +161,7 @@ const UnitDock = memo(function UnitDock(props: {
+           <b className="text-gold-300">{picked.name}</b>
+           <span className="role-tag">{picked.role}</span>
+           <UnitStats d={picked} />
+-          <span className="unit-desc text-steel-300">{picked.desc}</span>
++          <span className="unit-desc unit-description text-steel-300">{picked.desc}</span>
+         </div>
+       )}
+     </div>
+diff --git a/src/game/campaign.ts b/src/game/campaign.ts
+index 81e9298..4a53160 100644
+--- a/src/game/campaign.ts
++++ b/src/game/campaign.ts
+@@ -80,9 +80,9 @@ export const STAGES: Stage[] = [
+ // Balanced player budget multipliers: modest advantage early, tight parity later so lazy clump-spam fails.
+ const RATIO = [
+   1.2, 1.08, 1.06, 1.08, 1.08,
+-  1.04, 1.04, 1.06, 1.14, 1.08,
++  1.04, 1.08, 1.06, 1.14, 1.08,
+   1.06, 1.06, 1.05, 1.06, 1.08,
+-  1.06, 1.08, 1.06, 1.06, 1.12,
++  1.06, 1.08, 1.06, 1.06, 1.18,
+ ];
+ for (let i = 0; i < STAGES.length; i++) {
+   const s = STAGES[i];
+diff --git a/src/game/engine.ts b/src/game/engine.ts
+index c01cc39..0b8a60f 100644
+--- a/src/game/engine.ts
++++ b/src/game/engine.ts
+@@ -9,6 +9,7 @@ import { STAGES, loadCleared, type Stage } from "./campaign";
+ import { BattleSimulation, RESULT_DELAY, type CombatUnit, type EndStats, type Phase } from "./simulation";
+ import { UnitBatchRenderer } from "./unit-renderer";
+ import { buildStageEnv, type SceneEnv } from "./stages3d";
++import { terrainObstacles } from "./terrain";
+ 
+ export type { EndStats, Phase } from "./simulation";
+ export type ControlMode = "place" | "camera";
+@@ -241,6 +242,7 @@ export class Engine {
+     window.addEventListener("touchend", this.onTouchEnd);
+     document.addEventListener("visibilitychange", this.onVisibility);
+     mini.addEventListener("pointerdown", this.onMinimap);
++    mini.addEventListener("pointermove", this.onMinimapMove);
+     this.last = performance.now();
+     this.raf = requestAnimationFrame(this.loop);
+     this.pushHud();
+@@ -291,8 +293,10 @@ export class Engine {
+     this.story = false;
+     this.showcaseMode = false;
+     this.deployTeam = 0;
+-    this.setSceneTheme(this.customSceneId);
+     this.sim.setupSandbox();
++    this.sim.sceneIndex = this.customSceneId;
++    this.sim.resolveAllTerrain();
++    this.setSceneTheme(this.customSceneId);
+     this.setMode("place");
+     this.resetCamera();
+     this.audio.init();
+@@ -302,6 +306,8 @@ export class Engine {
+   setCustomScene(id: number) {
+     if (this.story || this.showcaseMode) return;
+     this.customSceneId = clamp(id, 1, 4);
++    this.sim.sceneIndex = this.customSceneId;
++    this.sim.resolveAllTerrain();
+     this.setSceneTheme(this.customSceneId);
+     this.audio.sfx("tab");
+   }
+@@ -317,14 +323,26 @@ export class Engine {
+   clearCustomUnits() {
+     if (this.story || this.showcaseMode || this.sim.phase !== "setup") return;
+     if (this.sim.clearUnits()) {
++      this.clearInput();
+       this.clearViews();
+       this.selected.clear();
++      this.hoverId = null;
++      this.floaters = [];
++      this.groundRings = [];
+       this.audio.sfx("click");
+       this.notify("両軍をリセットしました");
+       this.pushHud();
+     }
+   }
+ 
++  clearArmies() {
++    this.clearCustomUnits();
++  }
++
++  clearDeployment() {
++    this.setDeploy(null);
++  }
++
+   startStage(index: number) {
+     const stage = STAGES[clamp(index, 0, STAGES.length - 1)];
+     this.resetBattleState();
+@@ -451,6 +469,10 @@ export class Engine {
+     this.gesture = null;
+     this.boxMode = false;
+     this.deployKind = this.deployKind === kind ? null : kind;
++    if (this.deployKind && this.deployTeam === 0 && !this.sim.unlocked.has(this.deployKind)) {
++      this.deployKind = null;
++      return;
++    }
+     if (this.deployKind) {
+       this.selected.clear();
+       this.faction = DEFS[this.deployKind].faction;
+@@ -1113,9 +1135,9 @@ export class Engine {
+     if (e.button === 2) mode = "rotate";
+     else if (e.button === 1) mode = "pan";
+     else if (this.boxMode) mode = "pan";
++    else if (this.mode === "camera") mode = this.pointer.x < this.width / 2 ? "pan" : "rotate";
+     else if (this.mode === "place" && this.deployKind) mode = "place";
+     else if (this.deployKind) mode = "deploy";
+-    else if (this.mode === "camera") mode = this.pointer.x < this.width / 2 ? "pan" : "rotate";
+     else mode = "select";
+ 
+     this.gesture = {
+@@ -1384,12 +1406,18 @@ export class Engine {
+   private onMinimap = (e: PointerEvent) => {
+     if (!this.isInteractive()) return;
+     e.preventDefault();
++    try { this.mini.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+     const r = this.mini.getBoundingClientRect(), scale = this.minimapScale();
+     this.cameraTarget.set(((e.clientX - r.left) / r.width * this.mini.width - this.mini.width / 2) / scale, 0,
+       ((e.clientY - r.top) / r.height * this.mini.height - this.mini.height / 2) / scale);
+     this.clampCamera();
+   };
+ 
++  private onMinimapMove = (e: PointerEvent) => {
++    if (!(e.buttons & 1) || !this.isInteractive()) return;
++    this.onMinimap(e);
++  };
++
+   private updateCamera(dt: number) {
+     if (this.isInteractive()) {
+       let x = 0, z = 0;
+@@ -1542,7 +1570,7 @@ export class Engine {
+     this.updateHover();
+     this.zones.visible = phase === "setup" || this.deployKind !== null;
+     const hovered = this.hoverId !== null ? this.sim.getUnit(this.hoverId) : undefined;
+-    this.renderer.domElement.style.cursor = this.deployKind || this.boxMode ? "crosshair"
++    this.renderer.domElement.style.cursor = (this.deployKind && this.mode === "place") || this.boxMode ? "crosshair"
+       : this.gesture?.mode === "rotate" || (this.gesture?.mode === "pan" && !this.boxGesture) ? "grabbing"
+       : hovered ? (hovered.team === 1 && this.selected.size ? "crosshair" : "pointer") : "default";
+     this.renderer.render(this.scene, this.camera);
+@@ -1568,12 +1596,15 @@ export class Engine {
+ 
+   private updateTelemetry() {
+     const x = Math.round(this.cameraTarget.x), z = Math.round(this.cameraTarget.z), d = Math.round(this.distance);
+-    const y = Math.round(this.yaw * 100);
+-    const sig = `${x}|${z}|${d}|${y}`;
++    const y = Math.round(this.yaw * 100), p = this.pitch.toFixed(3);
++    const sig = `${x}|${z}|${d}|${y}|${p}|${this.sim.sceneIndex}`;
+     if (sig === this.telemetry) return;
+     this.telemetry = sig;
+     const el = this.container.parentElement;
+-    if (el) { el.dataset.camX = String(x); el.dataset.camZ = String(z); el.dataset.cam = String(d); el.dataset.camYaw = String(y); }
++    if (el) {
++      el.dataset.camX = String(x); el.dataset.camZ = String(z); el.dataset.cam = String(d);
++      el.dataset.camYaw = String(y); el.dataset.camPitch = p; el.dataset.scene = String(this.sim.sceneIndex);
++    }
+   }
+ 
+   /* ================= 2D overlay ================= */
+@@ -1692,25 +1723,28 @@ export class Engine {
+       c.fillRect(g.startX, g.startY, this.pointer.x - g.startX, this.pointer.y - g.startY);
+       c.strokeRect(g.startX, g.startY, this.pointer.x - g.startX, this.pointer.y - g.startY);
+     }
+-    if (this.deployKind && this.pointer.over && this.isInteractive()) {
++    if (this.deployKind && this.mode === "place" && this.pointer.over && this.isInteractive()) {
+       const point = this.groundAt(this.pointer.x, this.pointer.y);
+       if (!point) return;
+       const def = DEFS[this.deployKind];
+       const batch = (this.pointer.type !== "touch" && this.pointer.shift) || this.batchMode;
+-      const valid = this.sim.isDeployPosition(point.x, point.z, this.deployTeam) && this.sim.gold[this.deployTeam] >= def.cost
+-        && this.sim.count(this.deployTeam) < MAX_PER_TEAM && (this.sim.phase === "setup" || (this.sim.allowBattleDeploy && this.sim.count(this.deployTeam) > 0));
+-      const okColor = this.deployTeam === 0 ? "#f6d98a" : "#ff9f90";
++      const team = this.deployTeam;
++      const valid = this.sim.isDeployPosition(point.x, point.z, team) && this.sim.gold[team] >= def.cost
++        && this.sim.count(team) < MAX_PER_TEAM && (this.sim.phase === "setup" || (this.sim.allowBattleDeploy && this.sim.count(team) > 0));
++      const okColor = team === 0 ? "#f6d98a" : "#ff9f90";
+       const color = valid ? okColor : "#ff6552";
+       c.globalAlpha = 0.65 + 0.35 * pulseAmt;
+       this.drawRing(point.x, point.z, (batch ? 2.8 : 1.3) + def.radius * 0.6, color, 2.2);
+       c.globalAlpha = 1;
+       const base = this.proj(point.x, 0, point.z);
++      const baseX = base.x, baseY = base.y;
+       const top = this.proj(point.x, 3.4, point.z);
+       c.strokeStyle = color; c.setLineDash([3, 4]); c.lineWidth = 1.4;
+-      c.beginPath(); c.moveTo(base.x, base.y); c.lineTo(top.x, top.y); c.stroke(); c.setLineDash([]);
+-      c.fillStyle = "rgba(11,14,20,0.88)"; c.fillRect(base.x - 62, base.y + 16, 124, 22);
++      c.beginPath(); c.moveTo(baseX, baseY); c.lineTo(top.x, top.y); c.stroke(); c.setLineDash([]);
++      c.fillStyle = "rgba(11,14,20,0.88)"; c.fillRect(baseX - 62, baseY + 16, 124, 22);
+       c.font = "bold 11px sans-serif"; c.textAlign = "center"; c.fillStyle = color;
+-      c.fillText(valid ? `${def.name} ×${batch ? 5 : 1}  -${def.cost * (batch ? 5 : 1)}` : DEPLOY_MESSAGES.zone, base.x, base.y + 31);
++      const canAfford = Math.min(batch ? 5 : 1, Math.floor(this.sim.gold[team] / def.cost), MAX_PER_TEAM - this.sim.count(team));
++      c.fillText(valid ? `${def.name} ×${canAfford}  -${def.cost * canAfford}` : DEPLOY_MESSAGES.zone, baseX, baseY + 31);
+     }
+   }
+ 
+@@ -1723,6 +1757,10 @@ export class Engine {
+     c.fillStyle = "rgba(63,127,214,0.15)"; c.fillRect(0, 0, cx - 3 * s, h);
+     c.fillStyle = "rgba(208,69,58,0.15)"; c.fillRect(cx + 3 * s, 0, cx, h);
+     c.strokeStyle = "#424c4a"; c.strokeRect(cx - FIELD.x * s, cy - FIELD.z * s, FIELD.x * 2 * s, FIELD.z * 2 * s);
++    c.fillStyle = "#6d756c";
++    for (const o of terrainObstacles(this.sim.sceneIndex)) {
++      c.beginPath(); c.arc(cx + o.x * s, cy + o.z * s, o.radius * s, 0, Math.PI * 2); c.fill();
++    }
+     for (const u of this.sim.units) {
+       if (u.dead) continue;
+       c.fillStyle = this.selected.has(u.id) ? "#f6d98a" : TEAM_COLORS_CSS[u.team];
+@@ -1796,6 +1834,7 @@ export class Engine {
+     window.removeEventListener("touchend", this.onTouchEnd);
+     document.removeEventListener("visibilitychange", this.onVisibility);
+     this.mini.removeEventListener("pointerdown", this.onMinimap);
++    this.mini.removeEventListener("pointermove", this.onMinimapMove);
+     this.audio.dispose();
+     this.stageEnv?.dispose();
+     const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+diff --git a/src/game/simulation.ts b/src/game/simulation.ts
+index 38faf9c..3d6f1f2 100644
+--- a/src/game/simulation.ts
++++ b/src/game/simulation.ts
+@@ -4,6 +4,7 @@ import {
+   type ProjectileStyle, type TeamId, type UnitDef, type UnitKind,
+ } from "./units";
+ import { STAGES, stagePositions, unlockedThrough, type Stage } from "./campaign";
++import { terrainClear, terrainObstacles } from "./terrain";
+ 
+ export type Phase = "menu" | "setup" | "playing" | "paused" | "over";
+ export type Order = "auto" | "move" | "hold" | "attack";
+@@ -36,6 +37,7 @@ export interface CombatUnit {
+   gait: number;
+   flinch: number;
+   slowT: number;
++  charge: number;
+   chargeReady: boolean;
+   chargeRun: number;
+   /** Knockdown state. */
+@@ -111,6 +113,8 @@ export class BattleSimulation {
+   unlocked: Set<UnitKind> = new Set(unlockedThrough(0));
+   /** Custom mode allows placing both sides & battle reinforcements. */
+   allowBattleDeploy = true;
++  customSetup = false;
++  sceneIndex = 0;
+ 
+   private accumulator = 0;
+   private nextId = 1;
+@@ -135,6 +139,7 @@ export class BattleSimulation {
+   /** Custom battle: preset demo armies with free budget and all units. */
+   setupSandbox() {
+     this.reset(false);
++    this.customSetup = true;
+     this.allowBattleDeploy = true;
+     this.unlocked = new Set(Object.keys(DEFS) as UnitKind[]);
+     this.gold = [SANDBOX_BUDGET, SANDBOX_BUDGET];
+@@ -169,9 +174,14 @@ export class BattleSimulation {
+     return true;
+   }
+ 
++  clearArmies() {
++    return this.clearUnits();
++  }
++
+   /** Story: fixed budget, unlocked roster, and the stage's enemy layout. */
+   setupStage(stage: Stage, cleared: number) {
+     this.reset(false);
++    this.sceneIndex = stage.scene;
+     this.allowBattleDeploy = false;
+     this.unlocked = new Set(unlockedThrough(cleared));
+     this.gold = [stage.budget, stage.budget];
+@@ -187,6 +197,8 @@ export class BattleSimulation {
+     this.time = 0;
+     this.accumulator = 0;
+     this.nextId = 1;
++    this.customSetup = false;
++    this.sceneIndex = 0;
+     this.units = [];
+     this.byId.clear();
+     this.projectiles = [];
+@@ -259,11 +271,12 @@ export class BattleSimulation {
+       cooldown: this.random() * 0.25, healCd: 0, supportTimer: 0, animation: -1, thinkTimer: 0,
+       facing: team === 0 ? Math.PI / 2 : -Math.PI / 2,
+       gait: this.random() * Math.PI * 2, flinch: 0, slowT: 0,
+-      chargeReady: true, chargeRun: 0,
++      charge: 1, chargeReady: true, chargeRun: 0,
+       airborne: false, downTime: 0, getUp: 0, spin: 0, spinAxis: 1,
+       dead: false, deathTime: 0, scratch: new Vector3(),
+     };
+     this.units.push(u);
++    this.resolveTerrain(u);
+     this.byId.set(u.id, u);
+     this.spawned[team]++;
+     this.emit("spawn", u.position, team);
+@@ -273,12 +286,14 @@ export class BattleSimulation {
+   isDeployPosition(x: number, z: number, team: TeamId = 0) {
+     return Number.isFinite(x) && Number.isFinite(z)
+       && Math.abs(x) <= FIELD.x - 2 && Math.abs(z) <= FIELD.z - 2
+-      && (team === 0 ? x <= DEPLOY_EDGE : x >= -DEPLOY_EDGE);
++      && (team === 0 ? x <= DEPLOY_EDGE : x >= -DEPLOY_EDGE)
++      && terrainClear(this.sceneIndex, x, z, 0.55);
+   }
+ 
+   deploy(kind: UnitKind, x: number, z: number, requested = 1, team: TeamId = 0): DeployResult {
+     if ((this.phase !== "setup" && this.phase !== "playing")
+       || (this.phase === "playing" && (!this.allowBattleDeploy || this.count(team) === 0))) return { count: 0, reason: "inactive" };
++    if (team === 1 && (!this.allowBattleDeploy || this.phase !== "setup")) return { count: 0, reason: "inactive" };
+     if (team === 0 && !this.unlocked.has(kind)) return { count: 0, reason: "locked" };
+     if (!this.isDeployPosition(x, z, team)) return { count: 0, reason: "zone" };
+     if (!Number.isFinite(requested) || requested < 1) return { count: 0, reason: "inactive" };
+@@ -306,6 +321,7 @@ export class BattleSimulation {
+       const angle = i * 2.399963;
+       const p = new Vector3(x + Math.cos(angle) * distance, 0, z + Math.sin(angle) * distance);
+       if (!this.isDeployPosition(p.x, p.z, team)) continue;
++      if (!terrainClear(this.sceneIndex, p.x, p.z, r)) continue;
+       if (this.units.every(u => u.dead || planarDistanceSq(u.position, p) > (radius(u) + r + 0.4) ** 2)) return p;
+     }
+     return null;
+@@ -389,8 +405,8 @@ export class BattleSimulation {
+    * Applies directional damage (flank/rear 1.3x, frontal shield block) and
+    * TABS-style knockback (stagger, airborne launch, tumble, get-up).
+    */
+-  damage(unit: CombatUnit, amount: number, sourceTeam: TeamId, from?: Vector3, impact = 0) {
+-    if (unit.dead || sourceTeam === unit.team || !Number.isFinite(amount) || amount <= 0) return;
++  damage(unit: CombatUnit, amount: number, sourceTeam: TeamId, from?: Vector3, impact = 0): number {
++    if (unit.dead || sourceTeam === unit.team || !Number.isFinite(amount) || amount <= 0) return 0;
+     const def = DEFS[unit.kind];
+     let armor = def.armor;
+     let dirMult = 1;
+@@ -406,7 +422,7 @@ export class BattleSimulation {
+         // Vector from defender toward attacker compared with defender's facing (+Z rotated by yaw).
+         const dot = (-nx * Math.sin(unit.facing) + -nz * Math.cos(unit.facing));
+         if (dot > 0.35) {
+-          if (def.shield) {
++          if (def.shield && !this.isDown(unit)) {
+             armor = Math.min(0.75, armor + def.shield);
+             blocked = true;
+           }
+@@ -415,7 +431,7 @@ export class BattleSimulation {
+         }
+       }
+     }
+-    const dealt = amount * dirMult * (1 - armor);
++    const dealt = Math.min(unit.hp, amount * dirMult * (1 - armor));
+     unit.hp = Math.max(0, unit.hp - dealt);
+     unit.flinch = 0.26;
+     const power = Math.min(impact / def.mass, 15);
+@@ -441,7 +457,7 @@ export class BattleSimulation {
+       }
+     }
+     this.emit(blocked ? "block" : "hit", unit.position, unit.team);
+-    if (unit.hp > 0) return;
++    if (unit.hp > 0) return dealt;
+ 
+     // Fatal blow: let the corpse keep its launch/knockback momentum!
+     unit.dead = true;
+@@ -461,6 +477,7 @@ export class BattleSimulation {
+     this.kills[sourceTeam]++;
+     this.losses[unit.team]++;
+     this.emit("death", unit.position, unit.team);
++    return dealt;
+   }
+ 
+   private heal(target: CombatUnit, amount: number) {
+@@ -490,6 +507,7 @@ export class BattleSimulation {
+           u.position.addScaledVector(u.knock, dt);
+           u.position.x = clamp(u.position.x, -FIELD.x + 1, FIELD.x - 1);
+           u.position.z = clamp(u.position.z, -FIELD.z + 1, FIELD.z - 1);
++          this.resolveTerrain(u);
+           u.spin += dt * 7;
+           if (u.position.y <= 0) {
+             u.position.y = 0;
+@@ -522,6 +540,7 @@ export class BattleSimulation {
+       u.position.addScaledVector(u.knock, dt);
+       u.position.x = clamp(u.position.x, -FIELD.x + 1, FIELD.x - 1);
+       u.position.z = clamp(u.position.z, -FIELD.z + 1, FIELD.z - 1);
++      this.resolveTerrain(u);
+       u.spin += dt * (5 + u.knock.length() * 1.4);
+       u.velocity.set(0, 0, 0);
+       if (u.position.y <= 0) {
+@@ -555,27 +574,29 @@ export class BattleSimulation {
+     u.position.x = clamp(u.position.x, -FIELD.x + 1, FIELD.x - 1);
+     u.position.z = clamp(u.position.z, -FIELD.z + 1, FIELD.z - 1);
+     if (!u.airborne && u.position.y < 0) u.position.y = 0;
++    this.resolveTerrain(u);
+     u.knock.multiplyScalar(Math.exp(-decay * dt));
+   }
+ 
+   private updateUnit(u: CombatUnit, dt: number) {
+     const d = DEFS[u.kind];
+     const slow = u.slowT > 0 ? 0.55 : 1;
+-    u.cooldown = Math.max(0, u.cooldown - dt);
+-    u.healCd = Math.max(0, u.healCd - dt);
++    const actionDt = dt * slow;
++    u.cooldown = Math.max(0, u.cooldown - actionDt);
++    u.healCd = Math.max(0, u.healCd - actionDt);
+     u.flinch = Math.max(0, u.flinch - dt * 2.4);
+     this.slide(u, dt, 8);
+-    // Berserkers accelerate as hurt; slowed units windup/recover slower.
+-    const rate = (d.rage ? 0.45 + 0.55 * (u.hp / u.maxHp) : 1) * (u.slowT > 0 ? 1.55 : 1);
++    // Berserkers accelerate as hurt; slowed units windup/recover slower via actionDt.
++    const rate = d.rage ? 0.45 + 0.55 * (u.hp / u.maxHp) : 1;
+     const cycle = d.windup * rate + 0.3;
+     if (u.animation >= 0) {
+-      u.animation += dt / cycle;
++      u.animation += actionDt / cycle;
+       if (u.animation >= 1) u.animation = -1;
+     }
+ 
+-    // Paladin (frontline healer): heals wounded nearby allies while fighting on the front.
+-    if (d.heal && u.kind !== "cleric" && u.healCd <= 0) {
+-      this.pulseHeal(u, d);
++    // Paladin (frontline aura healer): heals all wounded nearby allies while fighting or advancing.
++    if (d.heal && u.kind !== "cleric") {
++      this.updatePaladin(u, d);
+     }
+ 
+     if (u.order === "move" && u.destination) {
+@@ -634,14 +655,18 @@ export class BattleSimulation {
+       return;
+     }
+ 
++    const approachSpeed = u.velocity.length();
+     if (u.windup === null && u.cooldown <= 0) {
+       u.windup = d.windup * rate;
++      if (u.kind === "knight" && u.chargeReady) {
++        u.charge = 1 + 0.5 * clamp(approachSpeed / d.speed, 0, 1);
++      }
+       u.animation = 0;
+       if (!d.ranged) this.emit("swing", u.position, u.team);
+     }
+ 
+     // Knight keeps charging forward during windup so velocity stays high at impact.
+-    if (u.kind === "knight" && u.chargeReady && u.windup !== null && distance > 1.6) {
++    if (u.kind === "knight" && u.chargeReady && u.charge > 1.01 && u.windup !== null && distance > 1.6) {
+       delta.divideScalar(distance);
+       this.move(u, delta, d.speed * slow, dt);
+     } else {
+@@ -650,7 +675,7 @@ export class BattleSimulation {
+     }
+ 
+     if (u.windup !== null) {
+-      u.windup -= dt;
++      u.windup -= actionDt;
+       if (u.windup <= 0) {
+         u.windup = null;
+         u.cooldown = d.cooldown * rate;
+@@ -660,43 +685,40 @@ export class BattleSimulation {
+     }
+   }
+ 
+-  private pulseHeal(u: CombatUnit, d: UnitDef) {
+-    let best: CombatUnit | undefined;
+-    let low = 0.95;
+-    const rangeSq = (d.healRange ?? 8.5) ** 2;
+-    for (const a of this.units) {
+-      if (a.dead || a.team !== u.team) continue;
+-      if (planarDistanceSq(u.position, a.position) > rangeSq) continue;
+-      const frac = a.hp / a.maxHp;
+-      if (frac < low) { low = frac; best = a; }
+-    }
+-    if (best) {
+-      this.heal(best, d.heal!);
+-      u.healCd = 2.0;
++  private updatePaladin(u: CombatUnit, d: UnitDef) {
++    if (u.healCd > 0 || !d.heal || !d.healRange) return;
++    let healed = false;
++    const rangeSq = d.healRange * d.healRange;
++    for (const ally of this.units) {
++      if (ally.dead || ally === u || ally.team !== u.team || ally.hp >= ally.maxHp) continue;
++      if (planarDistanceSq(u.position, ally.position) > rangeSq) continue;
++      this.heal(ally, d.heal);
++      healed = true;
+     }
++    if (healed) u.healCd = 1.6;
+   }
+ 
+   private strike(u: CombatUnit, d: UnitDef, target: CombatUnit) {
+-    let dmg = d.dmg * (0.9 + this.random() * 0.2);
+-    let impact = d.impact;
++    let mult = 1;
+     if (u.kind === "knight" && u.chargeReady) {
+-      const speedRatio = clamp(u.velocity.length() / d.speed, 0, 1);
+-      const mult = 1 + 0.5 * speedRatio;
+-      dmg *= mult;
+-      impact *= mult;
++      const liveMult = 1 + 0.5 * clamp(u.velocity.length() / d.speed, 0, 1);
++      mult = Math.max(u.charge, liveMult);
+       u.chargeReady = false;
++      u.charge = 1;
+       u.chargeRun = 0;
+       u.velocity.multiplyScalar(0.25);
+       this.emit("charge", target.position, u.team, mult);
+     }
+-    this.damage(target, dmg, u.team, u.position, impact);
+-    if (d.lifesteal) u.hp = Math.min(u.maxHp, u.hp + dmg * d.lifesteal);
++    const dmg = d.dmg * mult * (0.9 + this.random() * 0.2);
++    const impact = d.impact * mult;
++    const dealt = this.damage(target, dmg, u.team, u.position, impact);
++    if (d.lifesteal && dealt > 0) u.hp = Math.min(u.maxHp, u.hp + dealt * d.lifesteal);
+     if (d.cleave) {
+       for (const o of this.nearby(target.position, d.cleave + 1.2)) {
+         if (o === target || o.dead || o.team === u.team) continue;
+         if (planarDistanceSq(target.position, o.position) <= (d.cleave + radius(o)) ** 2) {
+-          this.damage(o, dmg * 0.6, u.team, u.position, impact * 0.7);
+-          if (d.lifesteal) u.hp = Math.min(u.maxHp, u.hp + dmg * 0.6 * d.lifesteal);
++          const cleaveDealt = this.damage(o, dmg * 0.6, u.team, u.position, impact * 0.7);
++          if (d.lifesteal && cleaveDealt > 0) u.hp = Math.min(u.maxHp, u.hp + cleaveDealt * d.lifesteal);
+         }
+       }
+       this.emit("boom", target.position, u.team, 0);
+@@ -791,10 +813,28 @@ export class BattleSimulation {
+ 
+   private move(u: CombatUnit, direction: Vector3, speed: number, dt: number) {
+     const desired = this.desiredScratch.set(direction.x, 0, direction.z).multiplyScalar(speed);
++    // Steer toward a side waypoint before reaching a rock or column, rather than walking into it.
++    if (speed > 0.1) {
++      let closest = Infinity;
++      for (const o of terrainObstacles(this.sceneIndex)) {
++        const dx = o.x - u.position.x, dz = o.z - u.position.z;
++        const ahead = dx * direction.x + dz * direction.z;
++        const expanded = o.radius + radius(u) + 0.65;
++        const cross = direction.x * dz - direction.z * dx;
++        if (ahead <= 0 || ahead > o.radius + radius(u) + 4.5 || Math.abs(cross) >= expanded || ahead >= closest) continue;
++        closest = ahead;
++        const side = Math.abs(cross) > 0.05 ? -Math.sign(cross) : (u.id % 2 ? 1 : -1);
++        const wx = o.x - direction.z * expanded * side - u.position.x;
++        const wz = o.z + direction.x * expanded * side - u.position.z;
++        const len = Math.hypot(wx, wz) || 1;
++        desired.set((wx / len) * speed, 0, (wz / len) * speed);
++      }
++    }
+     const reach = Math.max(3, radius(u) * 2 + 2);
+     for (const other of this.nearby(u.position, reach)) {
+       if (other === u || other.dead) continue;
+       const apart = this.apartScratch.copy(u.position).sub(other.position);
++      apart.y = 0;
+       let distance = apart.length();
+       const spacing = radius(u) + radius(other) + 0.2;
+       if (distance >= spacing) continue;
+@@ -813,9 +853,29 @@ export class BattleSimulation {
+     if (!u.airborne) u.position.y = 0;
+     u.position.x = clamp(u.position.x, -FIELD.x + 1, FIELD.x - 1);
+     u.position.z = clamp(u.position.z, -FIELD.z + 1, FIELD.z - 1);
++    this.resolveTerrain(u);
+     u.gait += u.velocity.length() * dt * 3;
+     if (speed > 0.1) this.face(u, Math.atan2(direction.x, direction.z), dt);
+   }
++
++  resolveTerrain(u: CombatUnit) {
++    for (const o of terrainObstacles(this.sceneIndex)) {
++      if (u.airborne && u.position.y > o.height + 0.5) continue;
++      const dx = u.position.x - o.x, dz = u.position.z - o.z;
++      const distance = Math.hypot(dx, dz);
++      const min = o.radius + radius(u) + 0.12;
++      if (distance >= min) continue;
++      const nx = distance > 0.001 ? dx / distance : (u.id % 2 ? 1 : -1);
++      const nz = distance > 0.001 ? dz / distance : 0;
++      u.position.x = o.x + nx * min;
++      u.position.z = o.z + nz * min;
++    }
++  }
++
++  resolveAllTerrain() {
++    for (const u of this.units) this.resolveTerrain(u);
++  }
++
+   private desiredScratch = new Vector3();
+   private apartScratch = new Vector3();
+   private aimScratch = new Vector3();
+@@ -887,10 +947,11 @@ export class BattleSimulation {
+         }
+       }
+       if (hit) {
++        const from = before.clone();
+         const impact = before.addScaledVector(segment, first);
+         if (p.aoe) this.explode(p, impact, p.style === "bomb" ? "boom" : "bolt");
+         else {
+-          this.damage(hit, p.damage, p.team, before, p.impact);
++          this.damage(hit, p.damage, p.team, from, p.impact);
+           if (p.slow) hit.slowT = Math.max(hit.slowT, p.slow);
+         }
+         return false;
+diff --git a/src/game/stages3d.ts b/src/game/stages3d.ts
+index 3e031e7..061f507 100644
+--- a/src/game/stages3d.ts
++++ b/src/game/stages3d.ts
+@@ -1,5 +1,6 @@
+ import * as THREE from "three";
+ import { GEO } from "./units";
++import { terrainObstacles } from "./terrain";
+ 
+ export interface SceneEnv {
+   group: THREE.Group;
+@@ -141,6 +142,29 @@ export function buildStageEnv(scene: THREE.Scene, sceneId: number): SceneEnv {
+   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+   localGeos.push(rockGeo);
+ 
++  // Render physical battlefield obstacles matching terrainObstacles(sceneId)
++  const obsStone = mat(sceneId === 2 ? 0xa56b47 : sceneId === 3 ? 0x7995a6 : 0x7a828c, 0.92);
++  const obsAccent = mat(sceneId === 2 ? 0xc89665 : sceneId === 3 ? 0xeaf4fa : 0x9da39a, 0.85);
++  const obsBase = mat(0x5b626d, 0.9);
++  for (const obstacle of terrainObstacles(sceneId)) {
++    const { x, z, radius: r, height: h } = obstacle;
++    if (sceneId === 4) {
++      add(GEO.cyl, obsBase, r, 0.6, r, x, 0.3, z);
++      add(GEO.cyl, obsStone, r * 0.68, h, r * 0.68, x, h / 2, z);
++      add(GEO.cyl, obsAccent, r * 0.86, 0.6, r * 0.86, x, h + 0.1, z);
++      for (let j = 1; j < 5; j++) add(GEO.cyl, obsBase, r * 0.72, 0.12, r * 0.72, x, (h * j) / 5, z);
++    } else if (sceneId === 1) {
++      add(GEO.cyl, obsStone, r, 0.7, r, x, 0.35, z);
++      add(GEO.box, obsAccent, r * 1.15, 3.1, r * 0.48, x, 1.7, z, 0.35);
++      add(GEO.box, obsStone, r * 1.4, 0.4, r * 0.55, x, 3.2, z, 0.35);
++      add(rockGeo, obsBase, 1.4, 1.0, 1.2, x + r * 0.45, 0.65, z + r * 0.25);
++    } else {
++      add(rockGeo, obsStone, r * 0.9, h * 0.7, r * 0.9, x, h * 0.34, z, 0.3);
++      add(rockGeo, obsAccent, r * 0.58, h * 0.4, r * 0.58, x - r * 0.16, h * 0.68, z, 0.8);
++      if (sceneId === 3) add(rockGeo, obsAccent, r * 0.48, 0.8, r * 0.48, x - r * 0.16, h * 0.91, z);
++    }
++  }
++
+   if (sceneId === 1) {
+     // Borderland graveyard: weathered stones, dead trees, fences, mossy rocks
+     const stone = mat(0x7d838a, 0.95);
+@@ -276,6 +300,7 @@ export function buildStageEnv(scene: THREE.Scene, sceneId: number): SceneEnv {
+     group,
+     dispose: () => {
+       scene.remove(group);
++      sun.shadow.map?.dispose();
+       for (const g0 of localGeos) g0.dispose();
+       for (const m0 of localMats) m0.dispose();
+       for (const t0 of localTex) t0.dispose();
+diff --git a/src/game/terrain.ts b/src/game/terrain.ts
+new file mode 100644
+index 0000000..eeb917a
+--- /dev/null
++++ b/src/game/terrain.ts
+@@ -0,0 +1,28 @@
++export interface TerrainObstacle {
++  x: number;
++  z: number;
++  radius: number;
++  height: number;
++}
++
++// Shared footprints drive 3D stage obstacles, placement checks, minimap rendering, and unit steering.
++const OBSTACLES: Record<number, TerrainObstacle[]> = {
++  0: [],
++  1: [{ x: 0, z: -19, radius: 3.6, height: 3 }, { x: 0, z: 19, radius: 3.6, height: 3 }],
++  2: [{ x: 0, z: -18, radius: 8, height: 11 }, { x: 0, z: 18, radius: 8, height: 11 }],
++  3: [{ x: -2, z: -12, radius: 5.5, height: 5 }, { x: 6, z: 15, radius: 5.5, height: 5 }],
++  4: [
++    { x: 0, z: -12, radius: 3.4, height: 7 },
++    { x: 0, z: 12, radius: 3.4, height: 7 },
++    { x: 16, z: -27, radius: 3.4, height: 7 },
++    { x: 16, z: 27, radius: 3.4, height: 7 },
++  ],
++};
++
++export function terrainObstacles(scene: number): readonly TerrainObstacle[] {
++  return OBSTACLES[scene] ?? OBSTACLES[0];
++}
++
++export function terrainClear(scene: number, x: number, z: number, radius = 0) {
++  return terrainObstacles(scene).every(o => Math.hypot(x - o.x, z - o.z) >= o.radius + radius + 0.1);
++}
+diff --git a/src/index.css b/src/index.css
+index b9b75ca..a3997a1 100644
+--- a/src/index.css
++++ b/src/index.css
+@@ -500,7 +500,7 @@ kbd {
+   background: rgba(238, 194, 95, 0.07);
+   border-left: 2px solid #eec25f;
+ }
+-.unit-desc { font-size: 11px; }
++.unit-desc, .unit-description { font-size: 11px; line-height: 1.5; }
+ .role-tag {
+   padding: 1px 6px;
+   font-size: 10px;
+@@ -629,15 +629,21 @@ kbd {
+   .unit-row {
+     gap: 5px;
+     overflow-x: auto;
++    overflow-y: hidden;
++    overscroll-behavior-x: contain;
++    touch-action: pan-x;
+     -webkit-overflow-scrolling: touch;
+     padding-bottom: 4px;
+     scrollbar-width: thin;
+     scrollbar-color: #8a6a2a #131a24;
++    scroll-snap-type: x proximity;
+   }
+   .unit-card {
+-    flex: 0 0 68px;
+-    min-height: 68px;
++    flex: 0 0 76px;
++    min-width: 76px;
++    min-height: 70px;
+     padding: 6px 2px 5px;
++    scroll-snap-align: start;
+   }
+   .card-icon { width: 24px; height: 24px; }
+   .card-name { font-size: 10px; }
+@@ -660,6 +666,44 @@ kbd {
+   .unit-card { min-height: 74px; }
+ }
+ 
++/* Short landscape screens use a side-by-side dock to preserve the centre of the battlefield. */
++@media (max-height: 560px) and (max-width: 940px) {
++  .hud-player, .hud-enemy { width: 150px; }
++  .hud-controls { top: 6px; left: 165px; right: 165px; width: auto; max-width: none; translate: none; }
++  .controls-panel { flex-wrap: wrap; }
++  .stage-brief { top: 82px; left: 6px; translate: none; width: 220px; max-width: 220px; }
++  .hud-notice { top: 82px; max-width: calc(100% - 350px); left: 165px; translate: none; }
++  .hud-notice.with-brief { top: 82px; left: 236px; max-width: calc(100% - 400px); }
++  .minimap-dock { display: none; }
++  .bottom-stack {
++    left: 6px;
++    right: 6px;
++    width: auto;
++    translate: none;
++    display: grid;
++    grid-template-columns: 210px minmax(0, 1fr);
++    align-items: end;
++    gap: 4px;
++    bottom: 4px;
++  }
++  .command-dock { grid-column: 1; }
++  .selection-info { font-size: 10px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; }
++  .selection-info > span { display: none; }
++  .command-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
++  .command-button { min-height: 30px; padding: 3px; font-size: 10px; }
++  .command-button kbd { display: none; }
++  .unit-dock { grid-column: 2; min-width: 0; padding: 4px 5px; }
++  .faction-tabs { margin-bottom: 2px; gap: 3px; }
++  .faction-tab { padding: 4px; font-size: 10px; }
++  .batch-toggle { padding: 4px 8px; font-size: 11px; }
++  .unit-row { overflow-x: auto; padding: 3px 1px; }
++  .unit-card { flex: 0 0 76px; min-width: 76px; min-height: 58px; padding: 4px 2px 3px; gap: 0; }
++  .card-icon { width: 20px; height: 20px; }
++  .card-name, .card-cost { font-size: 10px; }
++  .unit-info { padding: 3px 5px; margin-top: 3px; gap: 2px 6px; }
++  .unit-desc, .unit-description { font-size: 10px; flex-basis: 100%; line-height: 1.4; }
++}
++
+ @media (prefers-reduced-motion: reduce) {
+   *, *::before, *::after {
+     animation-duration: 0.01ms !important;
+diff --git a/tests/refinements.test.ts b/tests/refinements.test.ts
+new file mode 100644
+index 0000000..c2a0261
+--- /dev/null
++++ b/tests/refinements.test.ts
+@@ -0,0 +1,182 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { Vector3 } from "three";
++import { BattleSimulation, FIXED_STEP } from "../src/game/simulation";
++import { DEFS, MAX_PER_TEAM, SANDBOX_BUDGET, type UnitKind } from "../src/game/units";
++import { STAGES } from "../src/game/campaign";
++import { terrainObstacles, terrainClear } from "../src/game/terrain";
++
++function run(s: BattleSimulation, seconds: number) {
++  for (let i = 0; i < Math.ceil(seconds / FIXED_STEP); i++) s.advance(FIXED_STEP);
++}
++function inert(s: BattleSimulation, kind: UnitKind, x: number, z = 0) {
++  const u = s.spawn(1, kind, x, z);
++  u.hp = u.maxHp = 1e6;
++  u.cooldown = 1e9;
++  u.order = "hold";
++  u.facing = -Math.PI / 2;
++  return u;
++}
++
++test("paladin heals multiple allies while advancing; it never follows the cleric AI", () => {
++  const s = new BattleSimulation(); s.reset(false);
++  const paladin = s.spawn(0, "paladin", -20, 0);
++  const a = s.spawn(0, "spear", -22, -3), b = s.spawn(0, "spear", -22, 3);
++  a.hp = b.hp = 25; a.order = b.order = "hold";
++  inert(s, "giant", 30);
++  s.begin(); run(s, 3);
++  assert.ok(a.hp > 25 && b.hp > 25, "aura heals every wounded ally in range");
++  assert.ok(paladin.position.x > -12, "paladin advances even with wounded allies behind");
++  assert.equal(paladin.supportId, null);
++  assert.ok(s.drainEvents().some(e => e.type === "heal"));
++});
++
++test("paladin heals while obeying a move order; aura does not reset its melee animation", () => {
++  const s = new BattleSimulation(); s.reset(false);
++  const p = s.spawn(0, "paladin", -10, 0);
++  const ally = s.spawn(0, "spear", -12, 0); ally.hp = 25; ally.order = "hold";
++  inert(s, "giant", 40);
++  s.begin(); s.command([p.id], "move", new Vector3(-2, 0, 0)); run(s, 0.25);
++  assert.ok(p.position.x > -10);
++  assert.equal(ally.hp, 25 + DEFS.paladin.heal!);
++  assert.equal(p.animation, -1);
++});
++
++test("cleric stays near the army when no ally needs healing", () => {
++  const s = new BattleSimulation(); s.reset(false);
++  const c = s.spawn(0, "cleric", -20, 0);
++  const ally = s.spawn(0, "guardian", -16, 0); ally.order = "hold";
++  inert(s, "giant", 40);
++  s.begin(); run(s, 2);
++  assert.ok(c.position.x < -19, "cleric does not independently charge a distant enemy");
++});
++
++test("shaman applies its 2.5 second curse to nearby enemies, not allies", () => {
++  assert.equal(DEFS.shaman.slow, 2.5);
++  const s = new BattleSimulation(); s.reset(false);
++  const shaman = s.spawn(0, "shaman", -13, 0); shaman.cooldown = 1e9; shaman.order = "hold";
++  const target = inert(s, "giant", 0), nearby = inert(s, "giant", 0.5, 2), far = inert(s, "giant", 8);
++  const ally = s.spawn(0, "spear", 0, -2); ally.order = "hold"; ally.cooldown = 1e9;
++  s.begin(); s.fire(shaman, target); run(s, 0.8);
++  assert.ok(target.slowT > 2 && nearby.slowT > 2);
++  assert.equal(far.slowT, 0); assert.equal(ally.slowT, 0);
++});
++
++test("slow reduces movement, wind-up, cooldown recovery and animation together", () => {
++  const scenario = (slow: boolean, walking: boolean) => {
++    const s = new BattleSimulation(); s.reset(false);
++    const u = s.spawn(0, "spear", -15, 0);
++    inert(s, "giant", walking ? 40 : -12.5);
++    if (slow) u.slowT = 20;
++    if (!walking) { u.windup = 0.6; u.animation = 0; u.cooldown = 1; u.targetId = s.units[1].id; }
++    s.begin(); run(s, walking ? 1 : 0.25);
++    return u;
++  };
++  const normal = scenario(false, false), cursed = scenario(true, false);
++  assert.ok(cursed.windup! > normal.windup!);
++  assert.ok(cursed.cooldown > normal.cooldown);
++  assert.ok(cursed.animation < normal.animation);
++  assert.ok(scenario(true, true).position.x < scenario(false, true).position.x - 1);
++});
++
++for (const kind of ["guardian", "swordsman", "paladin", "spear"] as const) {
++  test(`${kind}: flanks do 1.3x damage; only shield units gain frontal defense and emit block`, () => {
++    const s = new BattleSimulation(); s.reset(false);
++    const front = s.spawn(0, kind, 0, 0), side = s.spawn(0, kind, 0, 10), back = s.spawn(0, kind, 0, 20);
++    front.facing = side.facing = back.facing = 0;
++    const shieldBonus = DEFS[kind].shield ?? 0;
++    s.drainEvents();
++    const a = s.damage(front, 50, 1, new Vector3(0, 0, 5));
++    const eventsAfterFront = s.drainEvents();
++    const b = s.damage(side, 50, 1, new Vector3(5, 0, 10));
++    const c = s.damage(back, 50, 1, new Vector3(0, 0, 15));
++    assert.ok(Math.abs(a - 50 * (1 - Math.min(0.75, DEFS[kind].armor + shieldBonus))) < 1e-7);
++    assert.ok(Math.abs(b - 50 * 1.3 * (1 - DEFS[kind].armor)) < 1e-7);
++    assert.equal(b, c);
++    assert.equal(eventsAfterFront.some(e => e.type === "block"), shieldBonus > 0);
++  });
++}
++
++test("vampire lifesteal is capped by actual post-armor damage and remaining target HP", () => {
++  const s = new BattleSimulation(7); s.reset(false);
++  const vamp = s.spawn(0, "vampire", 0, 0);
++  vamp.hp = 100;
++  const dying = s.spawn(1, "zombie", 2, 0);
++  dying.hp = 4; // only 4 HP left!
++  dying.order = "hold";
++  s.begin();
++  run(s, 0.7);
++  // Lifesteal on 4 actual damage at 45% is 1.8 HP, not 45% of full 38 base damage (~17.1 HP)
++  assert.ok(vamp.hp > 100 && vamp.hp <= 100 + 4 * DEFS.vampire.lifesteal! + 1e-5, `expected capped heal, got ${vamp.hp}`);
++});
++
++test("lance snapshots approach speed and boosts the first hit only, up to 1.5x", () => {
++  const scenario = (speed: number) => {
++    const s = new BattleSimulation(7); s.reset(false);
++    const horse = s.spawn(0, "knight", 0, 0); horse.cooldown = 0; horse.velocity.x = speed;
++    const target = inert(s, "giant", 3.1);
++    s.begin(); s.advance(FIXED_STEP);
++    const bonus = horse.charge;
++    run(s, 1);
++    return { s, horse, target, bonus, damage: target.maxHp - target.hp, impulse: target.lastHit.length() };
++  };
++  const stopped = scenario(0), fast = scenario(DEFS.knight.speed);
++  assert.equal(stopped.bonus, 1); assert.equal(fast.bonus, 1.5);
++  assert.ok(Math.abs(fast.damage / stopped.damage - 1.5) < 1e-6, "braking during wind-up must not lose the bonus");
++  assert.equal(fast.horse.chargeReady, false); assert.equal(fast.horse.charge, 1);
++  assert.equal(scenario(DEFS.knight.speed * 2).bonus, 1.5);
++});
++
++test("custom setup edits either army, uses separate budgets, and undo refunds the correct side", () => {
++  const s = new BattleSimulation(); s.setupSandbox(); s.clearArmies();
++  assert.equal(s.deploy("knight", 25, 0, 1, 1).count, 1);
++  assert.deepEqual(s.gold, [SANDBOX_BUDGET, SANDBOX_BUDGET - DEFS.knight.cost]);
++  assert.equal(s.deploy("spear", -25, 0, 1, 0).count, 1);
++  s.undoDeploy();
++  assert.deepEqual([s.count(0), s.count(1)], [0, 1]);
++  s.undoDeploy(); assert.deepEqual(s.gold, [SANDBOX_BUDGET, SANDBOX_BUDGET]);
++  assert.equal(s.deploy("spear", -25, 0, 1, 1).reason, "zone");
++});
++
++test("clear armies resets both budgets, unit counters, effects and undo history; story cannot clear enemies", () => {
++  const s = new BattleSimulation(); s.setupSandbox();
++  s.deploy("spear", 40, 20, 5, 1);
++  assert.equal(s.clearArmies(), true);
++  assert.deepEqual([s.count(0), s.count(1)], [0, 0]);
++  assert.deepEqual(s.spawned, [0, 0]); assert.deepEqual(s.gold, [SANDBOX_BUDGET, SANDBOX_BUDGET]);
++  assert.equal(s.canUndo, false); assert.equal(s.drainEvents().length, 0);
++  assert.equal(s.begin(), false);
++  s.setupStage(STAGES[0], 0);
++  assert.equal(s.clearArmies(), false);
++  assert.equal(s.deploy("spear", 25, 0, 1, 1).reason, "inactive");
++});
++
++test("50 living units per side remains the cap for custom armies", () => {
++  const s = new BattleSimulation(); s.setupSandbox(); s.clearArmies();
++  for (const team of [0, 1] as const) {
++    for (let i = 0; i < 10; i++) assert.equal(s.deploy("zombie", team === 0 ? -40 : 40, -25 + i * 5, 5, team).count, 5);
++    assert.equal(s.count(team), MAX_PER_TEAM);
++    assert.equal(s.deploy("zombie", team === 0 ? -30 : 30, 20, 1, team).reason, "limit");
++  }
++});
++
++test("story chapters have different terrain footprints and prohibit placement inside rocks", () => {
++  assert.deepEqual(terrainObstacles(0), []);
++  assert.equal(new Set([1, 2, 3, 4].map(i => JSON.stringify(terrainObstacles(i)))).size, 4);
++  for (const chapter of [1, 2, 3, 4]) {
++    const s = new BattleSimulation(); s.setupStage(STAGES[(chapter - 1) * 5], 19);
++    assert.equal(s.sceneIndex, chapter);
++    for (const o of terrainObstacles(chapter)) assert.equal(terrainClear(chapter, o.x, o.z), false);
++    assert.ok(s.units.every(u => terrainClear(chapter, u.position.x, u.position.z, DEFS[u.kind].radius)));
++  }
++});
++
++test("automatic troops navigate a boulder rather than staying stuck inside it", () => {
++  const s = new BattleSimulation(); s.reset(false); s.sceneIndex = 2;
++  const blue = s.spawn(0, "spear", -20, -18);
++  const red = inert(s, "giant", 22, -18);
++  s.begin(); run(s, 24);
++  assert.ok(blue.position.x > 10, `unit stuck at ${blue.position.toArray()}`);
++  assert.ok(red.hp < red.maxHp);
++  assert.ok(terrainClear(2, blue.position.x, blue.position.z, DEFS.spear.radius));
++});
