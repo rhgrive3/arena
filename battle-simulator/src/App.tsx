@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Crown, Flag, Gamepad2, Layers3, LockKeyhole, Maximize, RotateCcw, Search, Settings2, Shield, Sparkles, Swords, Volume2, VolumeX } from 'lucide-react';
 import { Brand, Coin, Dialog, PrimaryButton, StatBars } from './components/UI';
@@ -83,6 +83,8 @@ function Home({ onCampaign, onSandbox, onArmory, cleared }: { onCampaign: () => 
   </motion.main>;
 }
 
+function missionState(selected: number, cleared: number) { return selected < cleared ? 'クリア済み' : selected === cleared ? '挑戦可能' : '未解放'; }
+
 function Campaign({ cleared, onPlay }: { cleared: number; onPlay: (index: number) => void }) {
   const [selected, setSelected] = useState(Math.min(cleared, STAGES.length - 1));
   const stage = STAGES[selected];
@@ -103,6 +105,7 @@ function Campaign({ cleared, onPlay }: { cleared: number; onPlay: (index: number
         <span className="mission-start-note">{locked ? '前のミッションをクリアすると解放されます' : '戦場で兵種を選び、自軍を配置します'}</span>
       </motion.aside>
     </div>
+    <div className="mission-cta-bar"><div><small>MISSION {stageLabel(stage)}<span>{missionState(selected, cleared)}</span></small><b>{stage.name}</b></div><PrimaryButton onClick={() => onPlay(selected)} disabled={locked}>{locked ? <><LockKeyhole size={16} />未解放のミッション</> : '部隊を編成する'}</PrimaryButton></div>
   </motion.main>;
 }
 
@@ -111,12 +114,17 @@ function Armory({ onTry }: { onTry: (kind: UnitKind) => void }) {
   const [picked, setPicked] = useState<UnitKind>('swordsman');
   const [query, setQuery] = useState('');
   const def = DEFS[picked];
+  const stageRef = useRef<HTMLDivElement>(null);
+  const pick = (kind: UnitKind) => {
+    setPicked(kind);
+    if (window.matchMedia('(max-width: 760px)').matches) stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const units = query ? FACTIONS.flatMap(group => group.units).filter(kind => `${DEFS[kind].name} ${DEFS[kind].en}`.toLowerCase().includes(query.toLowerCase())) : FACTIONS.find(group => group.id === faction)!.units;
   return <motion.main className="inner-page armory-page" {...enter}>
     <div className="page-heading"><div><span className="eyebrow">THE ARMORY</span><h1>兵種図鑑<span className="heading-count">43</span></h1><p>全43兵種の能力と役割を確認できます。</p></div><div className="armory-heading-note"><Shield size={18} /><span>6勢力 / 43兵種</span></div></div>
     <div className="armory-tabs"><div role="tablist" aria-label="勢力">{FACTIONS.map(group => <button role="tab" aria-selected={faction === group.id} className={faction === group.id ? 'active' : ''} key={group.id} onClick={() => { setFaction(group.id); setPicked(group.units[0]); setQuery(''); }}>{group.name}<small>{group.en}</small></button>)}</div><label className="unit-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="兵種を検索" aria-label="兵種を検索" /></label></div>
-    <div className="armory-layout"><section className="armory-grid" aria-label="兵種一覧">{units.map(kind => <button className={`armory-unit ${picked === kind ? 'active' : ''}`} key={kind} onClick={() => setPicked(kind)} aria-pressed={picked === kind}><UnitPortrait kind={kind} /><span>{DEFS[kind].name}</span><small><Coin size={12} />{DEFS[kind].cost}</small>{picked === kind && <Check className="unit-picked" size={14} />}</button>)}{units.length === 0 && <p className="no-units">該当する兵種が見つかりません。</p>}</section>
-      <div className="model-stage"><div className="model-stage-ring" /><UnitModel kind={picked} /><span className="model-number">{def.en}</span><div className="model-instruction"><RotateCcw size={13} />ドラッグして回転</div></div>
+    <div className="armory-layout"><section className="armory-grid" aria-label="兵種一覧">{units.map(kind => <button className={`armory-unit ${picked === kind ? 'active' : ''}`} key={kind} onClick={() => pick(kind)} aria-pressed={picked === kind}><UnitPortrait kind={kind} /><span>{DEFS[kind].name}</span><small><Coin size={12} />{DEFS[kind].cost}</small>{picked === kind && <Check className="unit-picked" size={14} />}</button>)}{units.length === 0 && <p className="no-units">該当する兵種が見つかりません。</p>}</section>
+      <div className="model-stage" ref={stageRef}><div className="model-stage-ring" /><UnitModel kind={picked} /><span className="model-number">{def.en}</span><div className="model-instruction"><RotateCcw size={13} />ドラッグして回転</div></div>
       <motion.aside key={picked} className="armory-detail" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}><span className="eyebrow">{FACTIONS.find(group => group.id === def.faction)?.en} / {def.role}</span><h2>{def.name}</h2><span className="unit-english-name">{def.en}</span><p>{def.desc}</p><StatBars hp={def.hp} damage={def.dmg} range={def.range} speed={def.speed} /><div className="unit-special"><Shield size={18} /><div><small>特性 / SPECIALTY</small><b>{def.fly ? '飛行で前線を越え、後衛を急襲' : def.brace ? '槍衾で敵の突撃を食い止める' : def.shield ? `正面のダメージを${Math.round(def.shield * 100)}%軽減` : def.heal ? '周囲の味方を回復して戦線を維持' : def.aoe || def.cleave ? '範囲攻撃で密集した敵を一掃' : def.ranged ? '前衛の後ろから敵軍を攻撃' : def.hunter ? '機動力で敵の後衛を狙う' : '味方と連携して前線を押し上げる'}</b></div></div><PrimaryButton onClick={() => onTry(picked)}>この兵種を試す</PrimaryButton><span className="mission-start-note">カスタム戦では全43兵種を使用できます</span></motion.aside>
     </div>
   </motion.main>;
@@ -136,9 +144,19 @@ function SettingsDialog({ preferences, onChange, onClose }: { preferences: Prefe
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<'deploy' | 'battle'>('deploy');
-  return <Dialog title="操作方法" eyebrow="CONTROLS" onClose={onClose} className="help-dialog">
+  const [touch] = useState(() => typeof window !== 'undefined' && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+  const tap = touch ? 'タップ' : 'クリック';
+  const steps = [['01', '兵種を選ぶ', '画面下の兵種一覧から選択。勢力タブで切り替えられます。'], ['02', '自陣に配置する', `青いエリアを${tap}。ドラッグで連続配置、5体ずつ配置も可能です。`], ['03', '戦闘を開始する', '残り資金と敵軍の編成を確認し、「戦闘開始」で出撃しましょう。']];
+  const deployRows: [string, string[]][] = touch
+    ? [['直前の配置を取り消し', ['取り消しボタン']], ['配置した部隊を選ぶ', ['選択ボタン → タップ']], ['画面を移動', ['2本指ドラッグ']], ['拡大 / 縮小', ['ピンチ']]]
+    : [['直前の配置を取り消し', ['Ctrl', '+', 'Z']], ['配置モードを解除', ['Esc']], ['兵種を選択 / 5体ずつ配置', ['1 - 9', 'B']]];
+  const battleRows: [string, string[]][] = touch
+    ? [['部隊を選択', ['タップ']], ['範囲で選択', ['長押し → ドラッグ']], ['全軍を選択', ['ダブルタップ']], ['移動命令', ['選択中に地面をタップ']], ['カメラを移動', ['ドラッグ']], ['拡大 / 縮小', ['ピンチ']], ['カメラ回転', ['カメラモードで右半分をドラッグ']]]
+    : [['戦闘開始 / 一時停止', ['Space']], ['カメラを移動', ['W A S D']], ['カメラ回転', ['右ドラッグ']], ['拡大 / 縮小', ['ホイール']], ['全軍を選択', ['Ctrl + A']], ['総攻撃 / 待機', ['G / H']], ['選択部隊を追従', ['V']], ['カメラをリセット', ['Home']]];
+  const row = ([label, keys]: [string, string[]]) => <div className="help-key-row" key={label}><span>{label}</span>{keys.map(key => key === '+' ? <span key={key}>+</span> : touch ? <span className="gesture-chip" key={key}>{key}</span> : <kbd key={key}>{key}</kbd>)}</div>;
+  return <Dialog title="操作方法" eyebrow={touch ? 'TOUCH CONTROLS' : 'CONTROLS'} onClose={onClose} className="help-dialog">
     <div className="help-tabs" role="tablist"><button role="tab" aria-selected={tab === 'deploy'} className={tab === 'deploy' ? 'active' : ''} onClick={() => setTab('deploy')}><Layers3 size={16} />部隊の配置</button><button role="tab" aria-selected={tab === 'battle'} className={tab === 'battle' ? 'active' : ''} onClick={() => setTab('battle')}><Swords size={16} />戦闘とカメラ</button></div>
-    {tab === 'deploy' ? <><div className="help-steps">{[['01', '兵種を選ぶ', '画面下の兵種一覧から選択。勢力タブで切り替えられます。'], ['02', '自陣に配置する', '青いエリアをクリック。ドラッグで連続配置、5体ずつ配置も可能です。'], ['03', '戦闘を開始する', '残り資金と敵軍の編成を確認し、「戦闘開始」で出撃しましょう。']].map(([number, title, text]) => <div key={number}><span>{number}</span><div><b>{title}</b><p>{text}</p></div></div>)}</div><div className="help-key-row"><span>直前の配置を取り消し</span><kbd>Ctrl</kbd><span>+</span><kbd>Z</kbd></div><div className="help-key-row"><span>配置モードを解除</span><kbd>Esc</kbd></div><div className="help-key-row"><span>兵種を選択 / 5体ずつ配置</span><kbd>1 - 9</kbd><kbd>B</kbd></div></> : <div className="battle-help">{[['戦闘開始 / 一時停止', 'Space'], ['カメラを移動', 'W A S D'], ['カメラ回転', '右ドラッグ'], ['拡大 / 縮小', 'ホイール'], ['全軍を選択', 'Ctrl + A'], ['総攻撃 / 待機', 'G / H'], ['選択部隊を追従', 'V'], ['カメラをリセット', 'Home']].map(([label, key]) => <div className="help-key-row" key={label}><span>{label}</span><kbd>{key}</kbd></div>)}<p className="touch-help"><Gamepad2 size={17} />タッチ操作にも対応。タップで配置、2本指で移動・ピンチズームできます。</p></div>}
+    {tab === 'deploy' ? <><div className="help-steps">{steps.map(([number, title, text]) => <div key={number}><span>{number}</span><div><b>{title}</b><p>{text}</p></div></div>)}</div>{deployRows.map(row)}</> : <div className="battle-help">{battleRows.map(row)}<p className="touch-help"><Gamepad2 size={17} />{touch ? 'マウスとキーボードでも操作できます。PCではショートカットキーが使えます。' : 'タッチ操作にも対応。タップで配置、2本指で移動・ピンチズームできます。'}</p></div>}
     <PrimaryButton onClick={onClose} icon={false}>閉じる</PrimaryButton>
   </Dialog>;
 }
