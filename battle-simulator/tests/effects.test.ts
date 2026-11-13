@@ -113,14 +113,24 @@ test("shield block, magic impact and weapon trail ribbons differentiate cleanly 
   );
   assert.equal(additiveBoxes.length, 2, "magic impact activates both sparks and arcane embers");
 
-  for (let i = 0; i < 14; i++) {
-    fx.trail("u1", i * 0.15, 1.2, 0, 0xfff0c8);
+  for (let i = 0; i < 30; i++) {
+    fx.trail("u1", i * 0.15, 2.2, 0, i * 0.15, 1.2, 0, 0xfff0c8);
   }
   fx.update(0.016);
-  const trailMesh = instances(scene)[instances(scene).length - 1];
-  assert.ok(trailMesh.count > 0 && trailMesh.count <= 7, `weapon trail caps ribbon segments at <= 7 (got ${trailMesh.count})`);
-  fx.endTrail("u1");
+  const ribbon = scene.children.find(o => o instanceof THREE.Mesh && !(o instanceof THREE.InstancedMesh)) as THREE.Mesh;
+  const drawn = () => ribbon.geometry.drawRange.count;
+  assert.ok(ribbon.visible && drawn() > 0, "a swinging blade sweeps a visible ribbon");
+  assert.ok(drawn() <= 11 * 3 * 6, `the ribbon keeps a bounded number of spans per blade (got ${drawn() / 6} quads)`);
+  assert.equal(drawn() % 6, 0, "the ribbon is built from whole quads");
+  fx.update(0.5);
+  assert.equal(drawn(), 0, "the ribbon burns out once the blade stops");
+  assert.ok(!ribbon.visible);
+
+  fx.slash(0, 1.4, 0, 1, 0, 1.6, 0.4, 1);
   fx.update(0.016);
-  assert.equal(trailMesh.count, 0, "ended weapon trail clears on next update");
+  const arcs = instances(scene).filter(m => m.count === 1 && (m.material as THREE.MeshBasicMaterial).side === THREE.DoubleSide);
+  assert.equal(arcs.length, 1, "a melee swing hangs one crescent in the air");
+  fx.update(0.5);
+  assert.equal(arcs[0].count, 0, "the crescent fades away");
   fx.dispose();
 });

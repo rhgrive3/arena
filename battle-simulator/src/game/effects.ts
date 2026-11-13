@@ -28,6 +28,16 @@ const BOLT_DIRS = [
   new THREE.Vector3(0, 1, 0),
 ] as const;
 const QUAT = new THREE.Quaternion();
+const BASIS = new THREE.Matrix4();
+const AXIS_Y = new THREE.Vector3(0, 1, 0);
+const TIP_A = new THREE.Vector3(), TIP_B = new THREE.Vector3();
+const BASE_A = new THREE.Vector3(), BASE_B = new THREE.Vector3();
+function catmull(out: THREE.Vector3, p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3, p3: THREE.Vector3, t: number) {
+  const t2 = t * t, t3 = t2 * t;
+  const f = (a: number, b: number, c: number, d: number) =>
+    0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (3 * b - a - 3 * c + d) * t3);
+  return out.set(f(p0.x, p1.x, p2.x, p3.x), f(p0.y, p1.y, p2.y, p3.y), f(p0.z, p1.z, p2.z, p3.z));
+}
 const COL = new THREE.Color();
 
 const HAS_DOM = typeof document !== "undefined";
@@ -117,6 +127,81 @@ function splatTexture(): THREE.Texture {
   return t;
 }
 
+/** Billowing dust/smoke puff: several overlapping soft lobes instead of one flat disc. */
+function puffTexture(): THREE.Texture {
+  if (!HAS_DOM) return flatTexture();
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  const lobes: [number, number, number, number][] = [
+    [64, 66, 44, 0.55], [44, 54, 30, 0.5], [84, 52, 32, 0.5], [50, 82, 28, 0.42], [80, 80, 30, 0.42], [64, 44, 26, 0.45],
+  ];
+  for (const [x, y, r, a] of lobes) {
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(255,255,255,${a})`);
+    grad.addColorStop(0.55, `rgba(255,255,255,${a * 0.55})`);
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Crescent of a blade's cut: thick and white-hot in the middle, tapering to nothing at both ends. */
+function crescentTexture(): THREE.Texture {
+  if (!HAS_DOM) return flatTexture();
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  g.clearRect(0, 0, 128, 128);
+  // The arc is centred on the quad's bottom edge and bulges towards +V (the top).
+  const cx = 64, cy = 128, r = 104;
+  for (let pass = 0; pass < 3; pass++) {
+    const steps = 64;
+    for (let i = 0; i < steps; i++) {
+      const t0 = i / steps, t1 = (i + 1.2) / steps;
+      const a0 = Math.PI * (1.12 + 0.76 * t0), a1 = Math.PI * (1.12 + 0.76 * t1);
+      const bell = Math.pow(Math.sin(Math.PI * t0), 1.4);
+      // The leading end (t→1) is brighter: the cut is still "wet" there.
+      const lead = 0.35 + 0.65 * t0;
+      const width = [26, 12, 4][pass] * bell + 0.5;
+      const alpha = [0.16, 0.42, 0.95][pass] * bell * lead;
+      g.strokeStyle = `rgba(255,255,255,${alpha})`;
+      g.lineWidth = width;
+      g.lineCap = "butt";
+      g.beginPath();
+      g.arc(cx, cy, r - [10, 4, 1][pass], a0, a1);
+      g.stroke();
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Shock ring: a crisp bright rim with a soft glow trailing inward. */
+function ringTexture(): THREE.Texture {
+  return radialTexture([
+    [0, "rgba(255,255,255,0)"], [0.58, "rgba(255,255,255,0)"], [0.8, "rgba(255,255,255,0.16)"],
+    [0.93, "rgba(255,255,255,0.95)"], [0.985, "rgba(255,255,255,0.35)"], [1, "rgba(255,255,255,0)"],
+  ]);
+}
+
+/** Per-instance opacity for alpha-blended pools (smoke, stains): instance colour alone cannot fade them. */
+function fadeMaterial(mat: THREE.MeshBasicMaterial): THREE.MeshBasicMaterial {
+  mat.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float aFade;\nvarying float vFade;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFade = aFade;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vFade;")
+      .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.a *= vFade;");
+  };
+  return mat;
+}
+
 interface Particle {
   alive: boolean;
   p: THREE.Vector3;
@@ -133,17 +218,24 @@ interface Particle {
   g: number;
   b: number;
   stretch: number;
+  q?: THREE.Quaternion;
 }
 class Pool {
   constructor(
     public mesh: THREE.InstancedMesh,
     public list: Particle[],
-    public kind: "solid" | "billboard" | "flat" | "streak",
+    public kind: "solid" | "billboard" | "flat" | "streak" | "oriented",
     public additive = false,
+    public fade: THREE.InstancedBufferAttribute | null = null,
   ) {}
 }
 
-interface Trail { points: THREE.Vector3[]; life: number; color: THREE.Color }
+interface TrailSample { tip: THREE.Vector3; base: THREE.Vector3; age: number }
+interface Trail { samples: TrailSample[]; color: THREE.Color; width: number }
+const TRAIL_LIFE = 0.17;
+const TRAIL_SAMPLES = 12;
+const TRAIL_SUB = 3;
+const TRAIL_MAX_QUADS = 1400;
 
 export class EffectLayer {
   private sparks: Pool;
@@ -153,9 +245,15 @@ export class EffectLayer {
   private flares: Pool;
   private rings: Pool;
   private stains: Pool;
-  private trailMesh: THREE.InstancedMesh;
-  private trailList: Particle[] = [];
+  private arcs: Pool;
+  private trailMesh: THREE.Mesh;
+  private trailPos: Float32Array;
+  private trailCol: Float32Array;
   private trails = new Map<string, Trail>();
+  private samplePool: TrailSample[] = [];
+  private puffTex: THREE.Texture;
+  private arcTex: THREE.Texture;
+  private ringTex: THREE.Texture;
   private boltMesh: THREE.LineSegments;
   private boltPositions: Float32Array;
   private softTex: THREE.Texture;
@@ -167,39 +265,57 @@ export class EffectLayer {
     this.softTex = radialTexture([[0, "rgba(255,255,255,1)"], [0.35, "rgba(255,255,255,0.65)"], [1, "rgba(255,255,255,0)"]]);
     this.starTex = starTexture();
     this.splatTex = splatTexture();
+    this.puffTex = puffTexture();
+    this.arcTex = crescentTexture();
+    this.ringTex = ringTexture();
 
     const box = new THREE.BoxGeometry(1, 1, 1);
     const plane = new THREE.PlaneGeometry(1, 1);
     const additive = (opacity = 1) => new THREE.MeshBasicMaterial({
       transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity,
     });
-    const flat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, depthWrite: false });
 
     this.sparks = this.make(box, additive(), 520, "streak", true);
     this.embers = this.make(box, additive(), 220, "streak", true);
     this.chunks = this.make(box, new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.18 }), 260, "solid", false);
-    this.smoke = this.make(plane, flat.clone(), 320, "billboard", false);
+    this.smoke = this.make(plane, fadeMaterial(new THREE.MeshBasicMaterial({
+      map: this.puffTex, transparent: true, opacity: 0.85, depthWrite: false,
+    })), 320, "billboard", false, true);
     this.flares = this.make(plane, new THREE.MeshBasicMaterial({
       map: this.starTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     }), 140, "billboard", true);
-    this.rings = this.make(new THREE.RingGeometry(0.7, 1, 32), additive(0.9), 120, "flat", true);
-    this.stains = this.make(plane, new THREE.MeshBasicMaterial({
-      map: this.splatTex, transparent: true, opacity: 0.48, depthWrite: false,
-    }), 180, "flat", false);
+    const ringMat = additive(0.95);
+    ringMat.map = this.ringTex;
+    this.rings = this.make(new THREE.RingGeometry(0.5, 1, 40), ringMat, 120, "flat", true);
+    this.stains = this.make(plane, fadeMaterial(new THREE.MeshBasicMaterial({
+      map: this.splatTex, transparent: true, opacity: 0.5, depthWrite: false,
+    })), 180, "flat", false, true);
+    // Blade crescents: a quad whose bottom edge sits on the swing's pivot and whose arc bulges forward.
+    const arcGeo = new THREE.PlaneGeometry(2, 1);
+    arcGeo.translate(0, 0.5, 0);
+    this.arcs = this.make(arcGeo, new THREE.MeshBasicMaterial({
+      map: this.arcTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    }), 96, "oriented", true);
+    for (const p of this.arcs.list) p.q = new THREE.Quaternion();
 
-    this.trailMesh = new THREE.InstancedMesh(plane, new THREE.MeshBasicMaterial({
-      map: this.softTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
-    }), 180);
-    this.trailMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.trailMesh.count = 0;
+    // Weapon trails: one dynamic ribbon mesh shared by every swinging blade.
+    const trailGeo = new THREE.BufferGeometry();
+    this.trailPos = new Float32Array(TRAIL_MAX_QUADS * 18);
+    this.trailCol = new Float32Array(TRAIL_MAX_QUADS * 18);
+    const posAttr = new THREE.BufferAttribute(this.trailPos, 3);
+    const colAttr = new THREE.BufferAttribute(this.trailCol, 3);
+    posAttr.setUsage(THREE.DynamicDrawUsage);
+    colAttr.setUsage(THREE.DynamicDrawUsage);
+    trailGeo.setAttribute("position", posAttr);
+    trailGeo.setAttribute("color", colAttr);
+    trailGeo.setDrawRange(0, 0);
+    this.trailMesh = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false,
+    }));
     this.trailMesh.frustumCulled = false;
     this.trailMesh.renderOrder = 4;
-    this.trailMesh.setColorAt(0, new THREE.Color(1, 1, 1));
-    if (this.trailMesh.instanceColor) this.trailMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    this.trailMesh.visible = false;
     scene.add(this.trailMesh);
-    for (let i = 0; i < 180; i++) {
-      this.trailList.push({ alive: false, p: new THREE.Vector3(), v: new THREE.Vector3(), life: 0, max: 1, s0: 1, s1: 1, rot: 0, rotV: 0, drag: 0, grav: 0, r: 1, g: 1, b: 1, stretch: 0 });
-    }
 
     const boltGeo = new THREE.BufferGeometry();
     this.boltPositions = new Float32Array(96 * 6);
@@ -215,12 +331,20 @@ export class EffectLayer {
     scene.add(this.boltMesh);
   }
 
-  private make(geo: THREE.BufferGeometry, mat: THREE.Material, n: number, kind: Pool["kind"], additive = false): Pool {
+  private make(geo: THREE.BufferGeometry, mat: THREE.Material, n: number, kind: Pool["kind"], additive = false, fades = false): Pool {
+    // A fading pool owns its geometry: the per-instance opacity attribute must not leak into other pools.
+    if (fades) geo = geo.clone();
     const mesh = new THREE.InstancedMesh(geo, mat, n);
+    let fade: THREE.InstancedBufferAttribute | null = null;
+    if (fades) {
+      fade = new THREE.InstancedBufferAttribute(new Float32Array(n).fill(1), 1);
+      fade.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute("aFade", fade);
+    }
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
     mesh.frustumCulled = false;
-    mesh.renderOrder = kind === "streak" || kind === "billboard" ? 4 : 3;
+    mesh.renderOrder = kind === "streak" || kind === "billboard" || kind === "oriented" ? 4 : 3;
     mesh.setColorAt(0, new THREE.Color(1, 1, 1));
     if (mesh.instanceColor) mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
     this.scene.add(mesh);
@@ -228,7 +352,7 @@ export class EffectLayer {
     for (let i = 0; i < n; i++) {
       list.push({ alive: false, p: new THREE.Vector3(), v: new THREE.Vector3(), life: 0, max: 1, s0: 1, s1: 1, rot: 0, rotV: 0, drag: 0, grav: 0, r: 1, g: 1, b: 1, stretch: 0 });
     }
-    return { mesh, list, kind, additive };
+    return { mesh, list, kind, additive, fade };
   }
 
   private take(pool: Pool) {
@@ -490,6 +614,7 @@ export class EffectLayer {
     this.updatePool(this.flares, dt);
     this.updatePool(this.rings, dt);
     this.updatePool(this.stains, dt);
+    this.updatePool(this.arcs, dt);
     this.updateBolts(dt);
     this.updateTrails(dt);
   }
@@ -540,12 +665,19 @@ export class EffectLayer {
         const spread = 1 - Math.exp(-8 * k);
         const tail = k > 0.75 ? 1 - ((k - 0.75) / 0.25) * 0.45 : 1;
         size = (p.s0 + (p.s1 - p.s0) * spread) * tail;
+      } else if (pool === this.arcs) {
+        // The cut opens almost instantly, then only drifts outward while it fades.
+        size = p.s0 + (p.s1 - p.s0) * (1 - Math.exp(-9 * k));
       } else {
         size = p.s0 + (p.s1 - p.s0) * k;
       }
 
       this.dummy.position.copy(p.p);
-      if (pool.kind === "billboard") {
+      if (pool.kind === "oriented") {
+        this.dummy.quaternion.copy(p.q!);
+        this.dummy.rotateZ(p.rot);
+        this.dummy.scale.set(size, size * p.stretch, size);
+      } else if (pool.kind === "billboard") {
         this.dummy.quaternion.copy(camQ);
         this.dummy.rotateZ(p.rot);
         this.dummy.scale.setScalar(size);
@@ -578,6 +710,12 @@ export class EffectLayer {
       } else {
         COL.setRGB(p.r, p.g, p.b);
       }
+      if (pool.fade) {
+        // Smoke blooms in and thins out; stains hold, then soak away.
+        pool.fade.array[count] = pool === this.smoke
+          ? Math.min(1, k * 9) * Math.pow(1 - k, 1.35)
+          : k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1;
+      }
       mesh.setColorAt(count, COL);
       count++;
     }
@@ -591,6 +729,11 @@ export class EffectLayer {
         mesh.instanceColor.clearUpdateRanges();
         mesh.instanceColor.addUpdateRange(0, count * 3);
         mesh.instanceColor.needsUpdate = true;
+      }
+      if (pool.fade) {
+        pool.fade.clearUpdateRanges();
+        pool.fade.addUpdateRange(0, count);
+        pool.fade.needsUpdate = true;
       }
     }
   }
@@ -613,84 +756,148 @@ export class EffectLayer {
   }
 
   private updateTrails(dt: number) {
-    let count = 0;
-    const nSegmentsMax = this.trailList.length;
+    const pos = this.trailPos, col = this.trailCol;
+    let v = 0;
+    const put = (p: THREE.Vector3, r: number, g: number, b: number) => {
+      pos[v] = p.x; pos[v + 1] = p.y; pos[v + 2] = p.z;
+      col[v] = r; col[v + 1] = g; col[v + 2] = b;
+      v += 3;
+    };
+    const limit = TRAIL_MAX_QUADS * 18;
     for (const [id, t] of this.trails) {
-      t.life -= dt;
-      if (t.life <= 0) { this.trails.delete(id); continue; }
-      const pts = t.points;
-      const segs = pts.length - 1;
-      const lifeFade = Math.min(1, t.life / 0.13);
-      for (let i = 0; i < segs && count < nSegmentsMax; i++) {
-        const a = pts[i], b = pts[i + 1];
-        const len = a.distanceTo(b);
-        if (len < 0.01) continue;
-        MID.copy(a).lerp(b, 0.5);
-        DIR.copy(b).sub(a).normalize();
-        QUAT.setFromUnitVectors(UP, DIR);
-        // Progress from trailing wake (0) to sharp blade tip (1)
-        const progress = (i + 1) / segs;
-        const widthProfile = Math.pow(progress, 0.65) * lifeFade;
-        const hotTip = Math.pow(progress, 2.2) * 0.65;
-        this.dummy.position.copy(MID);
-        this.dummy.quaternion.copy(QUAT);
-        this.dummy.scale.set(0.105 * widthProfile, len * 1.16, 1);
-        this.dummy.updateMatrix();
-        this.trailMesh.setMatrixAt(count, this.dummy.matrix);
-        COL.setRGB(
-          (t.color.r + (1 - t.color.r) * hotTip) * widthProfile,
-          (t.color.g + (1 - t.color.g) * hotTip) * widthProfile,
-          (t.color.b + (1 - t.color.b) * hotTip) * widthProfile,
-        );
-        this.trailMesh.setColorAt(count, COL);
-        count++;
+      const list = t.samples;
+      for (const smp of list) smp.age += dt;
+      while (list.length && list[0].age >= TRAIL_LIFE) this.samplePool.push(list.shift()!);
+      if (!list.length) { this.trails.delete(id); continue; }
+      const n = list.length;
+      if (n < 2) continue;
+      const cr = t.color.r, cg = t.color.g, cb = t.color.b;
+      // Catmull-Rom between samples so a fast swing reads as a curve, not a polygon.
+      let prevTip = TIP_A.copy(list[0].tip), prevBase = BASE_A.copy(list[0].base);
+      let prevHeat = this.trailHeat(list[0].age, 0);
+      for (let i = 0; i < n - 1 && v + 18 <= limit; i++) {
+        const s0 = list[Math.max(0, i - 1)], s1 = list[i], s2 = list[i + 1], s3 = list[Math.min(n - 1, i + 2)];
+        for (let j = 1; j <= TRAIL_SUB && v + 18 <= limit; j++) {
+          const u = j / TRAIL_SUB;
+          const tip = catmull(TIP_B, s0.tip, s1.tip, s2.tip, s3.tip, u);
+          const base = catmull(BASE_B, s0.base, s1.base, s2.base, s3.base, u);
+          const heat = this.trailHeat(s1.age + (s2.age - s1.age) * u, (i + u) / (n - 1));
+          // Two triangles per span. The blade edge glows; the inner edge is black, i.e. invisible when additive.
+          const h0 = prevHeat * t.width, h1 = heat * t.width;
+          const w0 = Math.pow(prevHeat, 3) * 0.35, w1 = Math.pow(heat, 3) * 0.35;
+          put(prevBase, 0, 0, 0);
+          put(prevTip, (cr + (1 - cr) * w0) * h0, (cg + (1 - cg) * w0) * h0, (cb + (1 - cb) * w0) * h0);
+          put(tip, (cr + (1 - cr) * w1) * h1, (cg + (1 - cg) * w1) * h1, (cb + (1 - cb) * w1) * h1);
+          put(prevBase, 0, 0, 0);
+          put(tip, (cr + (1 - cr) * w1) * h1, (cg + (1 - cg) * w1) * h1, (cb + (1 - cb) * w1) * h1);
+          put(base, 0, 0, 0);
+          prevTip = TIP_A.copy(tip); prevBase = BASE_A.copy(base); prevHeat = heat;
+        }
       }
-      if (pts.length > 2) pts.shift();
     }
-    this.trailMesh.count = count;
-    this.trailMesh.visible = count > 0;
-    if (count > 0) {
-      this.trailMesh.instanceMatrix.clearUpdateRanges();
-      this.trailMesh.instanceMatrix.addUpdateRange(0, count * 16);
-      this.trailMesh.instanceMatrix.needsUpdate = true;
-      if (this.trailMesh.instanceColor) {
-        this.trailMesh.instanceColor.clearUpdateRanges();
-        this.trailMesh.instanceColor.addUpdateRange(0, count * 3);
-        this.trailMesh.instanceColor.needsUpdate = true;
+    const geo = this.trailMesh.geometry;
+    geo.setDrawRange(0, v / 3);
+    this.trailMesh.visible = v > 0;
+    if (v > 0) {
+      for (const name of ["position", "color"] as const) {
+        const attr = geo.getAttribute(name) as THREE.BufferAttribute;
+        attr.clearUpdateRanges();
+        attr.addUpdateRange(0, v);
+        attr.needsUpdate = true;
       }
     }
   }
 
-  /** Weapon trail: a slender ribbon following the blade tip across frames. */
-  trail(id: string, x: number, y: number, z: number, color: number) {
+  /** Brightness of a ribbon span: young samples burn, and the ribbon tapers towards its tail. */
+  private trailHeat(age: number, along: number) {
+    const young = Math.max(0, 1 - age / TRAIL_LIFE);
+    return Math.pow(young, 1.5) * (0.25 + 0.75 * along);
+  }
+
+  /**
+   * Weapon trail: a ribbon swept by the blade itself. Each call adds the blade's current edge
+   * (tip → a point part-way down the weapon); successive edges are stitched into a swoosh.
+   */
+  trail(id: string, tx: number, ty: number, tz: number, bx: number, by: number, bz: number, color: number, width = 1) {
     let t = this.trails.get(id);
     if (!t) {
-      t = { points: [], life: 0, color: new THREE.Color(color) };
+      if (this.trails.size >= 72) return;
+      t = { samples: [], color: new THREE.Color(color), width };
       this.trails.set(id, t);
     }
     t.color.setHex(color);
-    if (t.points.length >= 8) {
-      const reused = t.points.shift()!;
-      reused.set(x, y, z);
-      t.points.push(reused);
-    } else {
-      t.points.push(new THREE.Vector3(x, y, z));
-    }
-    t.life = 0.13;
+    t.width = width;
+    const last = t.samples[t.samples.length - 1];
+    if (last && last.tip.distanceToSquared(TMP.set(tx, ty, tz)) < 0.0009) return;
+    const smp = t.samples.length >= TRAIL_SAMPLES ? t.samples.shift()!
+      : this.samplePool.pop() ?? { tip: new THREE.Vector3(), base: new THREE.Vector3(), age: 0 };
+    smp.tip.set(tx, ty, tz);
+    smp.base.set(bx, by, bz);
+    smp.age = 0;
+    t.samples.push(smp);
   }
 
-  endTrail(id: string) {
-    const t = this.trails.get(id);
-    if (t) t.life = 0;
+  /** Lets the ribbon burn out on its own instead of cutting it off mid-air. */
+  endTrail(_id: string) { /* samples age out in updateTrails */ }
+
+  get activeTrails() { return this.trails.size; }
+
+  /**
+   * The cut itself: a crescent hanging in the air where the blade passed.
+   * `tilt` rolls the cutting plane about the facing axis (0 = level sweep, ±π/2 = vertical chop);
+   * `sweep` spins the crescent within that plane as it fades, in the direction of the swing.
+   */
+  slash(x: number, y: number, z: number, dx: number, dz: number, radius: number, tilt = 0, sweep = 1, color = 0xfff2d0, depth = 0.62, life = 0.2) {
+    const p = this.take(this.arcs);
+    if (!p) return;
+    const len = Math.hypot(dx, dz) || 1;
+    const fx = dx / len, fz = dz / len;
+    // Basis: X = right, Y = forward (the crescent bulges this way), Z = up.
+    BASIS.makeBasis(TMP.set(fz, 0, -fx), DIR.set(fx, 0, fz), MID.set(0, 1, 0));
+    p.q!.setFromRotationMatrix(BASIS);
+    QUAT.setFromAxisAngle(AXIS_Y, tilt);
+    p.q!.multiply(QUAT);
+    p.alive = true;
+    p.p.set(x, y, z);
+    p.v.set(fx * 1.3, 0, fz * 1.3);
+    p.life = p.max = life;
+    p.s0 = radius * 0.72;
+    p.s1 = radius * 1.08;
+    p.stretch = depth;
+    p.rot = -sweep * 0.55;
+    p.rotV = sweep * 4.6;
+    p.drag = 5;
+    p.grav = 0;
+    COL.setHex(color);
+    p.r = COL.r; p.g = COL.g; p.b = COL.b;
+  }
+
+  /** A single long streak: the line of a thrust, a lance point or a bolt leaving the string. */
+  streak(x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, color: number, speed = 16) {
+    const p = this.take(this.sparks);
+    if (!p) return;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    p.alive = true;
+    p.p.set(x, y, z);
+    p.v.set((dx / len) * speed, (dy / len) * speed, (dz / len) * speed);
+    p.life = p.max = 0.13;
+    p.s0 = 0.085;
+    p.s1 = 0.004;
+    p.stretch = Math.max(1, length / 0.085 / 3.2);
+    p.drag = 9;
+    p.grav = 0;
+    COL.setHex(color);
+    p.r = COL.r; p.g = COL.g; p.b = COL.b;
+    p.rot = 0; p.rotV = 0;
   }
 
   clear() {
-    for (const pool of [this.sparks, this.embers, this.chunks, this.smoke, this.flares, this.rings, this.stains]) {
+    for (const pool of [this.sparks, this.embers, this.chunks, this.smoke, this.flares, this.rings, this.stains, this.arcs]) {
       for (const p of pool.list) p.alive = false;
       pool.mesh.count = 0;
       pool.mesh.visible = false;
     }
-    this.trailMesh.count = 0;
+    this.trailMesh.geometry.setDrawRange(0, 0);
     this.trailMesh.visible = false;
     this.trails.clear();
     const lines: { line: THREE.Line; life: number }[] = this.boltMesh.userData.lines || [];
@@ -705,7 +912,7 @@ export class EffectLayer {
 
   dispose() {
     this.clear();
-    for (const pool of [this.sparks, this.embers, this.chunks, this.smoke, this.flares, this.rings, this.stains]) {
+    for (const pool of [this.sparks, this.embers, this.chunks, this.smoke, this.flares, this.rings, this.stains, this.arcs]) {
       this.scene.remove(pool.mesh);
       pool.mesh.geometry.dispose();
       (pool.mesh.material as THREE.Material).dispose();

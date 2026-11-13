@@ -1,10 +1,11 @@
 import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { AudioFX, type SfxName } from "./audio";
 import {
   DEFS, FACTIONS, FACTION_UNITS, FIELD, GEO, M, MAX_PER_TEAM, TEAM_COLORS_CSS,
   type Faction, type TeamId, type UnitKind,
 } from "./units";
-import { buildUnitRig, type UnitRig } from "./rigs";
+import { setRigEnvironment, buildUnitRig, type UnitRig } from "./rigs";
 import { DEFAULT_DEPLOY, KIND_CAP, SCENES, STAGES, loadCleared, stageLabel, type Stage } from "./campaign";
 import { BattleSimulation, FLY_ALTITUDE, RESULT_DELAY, type CombatUnit, type EndStats, type Formation, type Phase } from "./simulation";
 import { UnitBatchRenderer } from "./unit-renderer";
@@ -97,6 +98,14 @@ const easeOut = (x: number) => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
 const pulse = (s: number) => (s < 0.25 ? s / 0.25 : 1 - ((s - 0.25) / 0.75) * 0.85);
 const UP = new THREE.Vector3(0, 1, 0);
 const DROP = 0.34;
+
+/** Colour a unit's blade leaves in the air. */
+const TRAIL_COLORS: Partial<Record<UnitKind, number>> = {
+  vampire: 0xff5f72, frost: 0xa8e4ff, samurai: 0xe4f6ff, ninja: 0xd8e8ff, assassin: 0xd8e8ff,
+  paladin: 0xffe9a8, king: 0xffe08a, zeus: 0xbfe6ff, valkyrie: 0xdff0ff, skeleton: 0xcdeedd,
+  zombie: 0xb8e08a, necromancer: 0xc79bff, orc: 0xffd9a0, troll: 0xffd9a0, giant: 0xffd9a0, berserker: 0xffb48a,
+};
+function trailColor(kind: UnitKind) { return TRAIL_COLORS[kind] ?? 0xfff2d6; }
 
 type AttackStyle = "thrust" | "overhead" | "slash" | "shoot" | "throw" | "cast" | "heal" | "claw" | "lance";
 const POSE: Record<UnitKind, { r: number; l: number; swing: number; style: AttackStyle }> = {
@@ -191,7 +200,6 @@ export class Engine {
   private cannonPool: THREE.Group[] = [];
   private railPool: THREE.Group[] = [];
   private particles: Particle[] = [];
-  private particleIndex = 0;
   private floaters: Floater[] = [];
   private groundRings: GroundRing[] = [];
   private zones = new THREE.Group();
@@ -224,7 +232,6 @@ export class Engine {
   private pinch: Pinch | null = null;
   private lastTap = { time: 0, x: 0, y: 0 };
   private animClock = 0;
-  private trailOn = false;
   private pointer = { x: 0, y: 0, over: false, shift: false, type: "mouse" };
   private yaw = 0;
   private pitch = 0.68;
@@ -253,7 +260,9 @@ export class Engine {
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private ndc = new THREE.Vector2();
   private tmp = new THREE.Vector3();
+  private envMap: THREE.Texture | null = null;
   private tipScratch = new THREE.Vector3();
+  private baseScratch = new THREE.Vector3();
   private groundScratchA = new THREE.Vector3();
   private groundScratchB = new THREE.Vector3();
   private proj3 = new THREE.Vector3();
@@ -274,6 +283,12 @@ export class Engine {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
+    // Image-based light for the units only: armour, blades and gold get something to reflect
+    // instead of rendering black, while each battlefield keeps its own mood lighting.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    setRigEnvironment(this.envMap);
     const canvas = this.renderer.domElement;
     canvas.dataset.testid = "battle-canvas";
     canvas.setAttribute("aria-label", "3D戦場");
@@ -776,6 +791,8 @@ export class Engine {
       rig.root.rotation.set(0, u.facing, 0);
       rig.root.scale.setScalar(rig.scale);
       rig.body.scale.set(1, 1, 1);
+      const hurt = u.dead ? 0 : clamp(u.flinch / 0.26, 0, 1);
+      this.unitRenderer.setFlash(u.id, hurt * hurt);
       if (u.dead) {
         this.poseDead(u, rig);
         this.selected.delete(u.id);
@@ -809,6 +826,13 @@ export class Engine {
       if (p.style === "bomb") view.rotation.x += 0.2;
       else if (p.style === "shuriken") view.rotation.y += 0.9;
       else if (p.velocity.lengthSq() > 0.001) view.quaternion.setFromUnitVectors(UP, this.tmp.copy(p.velocity).normalize());
+      if (emitTrail && p.style !== "bomb" && p.style !== "cannon") {
+        // Missiles draw a thin streak behind them; magic and rail shots burn a wide one.
+        const magic = p.style === "bolt", rail = p.style === "rail";
+        const half = magic ? 0.2 : rail ? 0.16 : 0.045;
+        const color = magic ? (p.team === 0 ? 0xc79bff : 0xffa070) : rail ? 0x9ff0ff : 0xf4ead2;
+        this.fx.trail(`p${p.id}`, p.position.x, p.position.y + half, p.position.z, p.position.x, p.position.y - half, p.position.z, color, magic || rail ? 0.9 : 0.34);
+      }
       if (emitTrail && Math.random() < 0.45) {
         if (p.style === "bomb" || p.style === "cannon") {
           this.fx.puff(p.position.x, p.position.y, p.position.z, 1, 0.28, 0x8a8278, 0.4, 0.32);
@@ -842,7 +866,8 @@ export class Engine {
     if (!fx.landed) {
       fx.landed = true;
       const heavy = DEFS[u.kind].radius > 0.9;
-      this.burst(u.position.x, 0.2, u.position.z, 0xd8d0b8, heavy ? 12 : 7, 3.4, 0.22, 0.5, 0.2, 1.4);
+      this.fx.puff(u.position.x, 0.16, u.position.z, heavy ? 9 : 5, heavy ? 1.5 : 0.95, 0xcfc6b2, 0.5, 0.7);
+      this.fx.chip(u.position.x, 0.12, u.position.z, 0, 0, heavy ? 5 : 2, 0xb9b09a);
       this.groundRings.push({ x: u.position.x, z: u.position.z, age: 0, life: 0.5, size: heavy ? 3.4 : 2.2, color: u.team === 0 ? "#8cbcff" : "#ff9a8a" });
       this.audio.sfx("land", this.panAt(u.position.x, u.position.z));
       if (heavy) this.shake = Math.max(this.shake, 0.3);
@@ -883,6 +908,7 @@ export class Engine {
     const sp = (key: string, target: number, freq = 18, damp = 0.65) => this.spring(rig, key, target, pdt, freq, damp);
 
     // Legs / gallop
+    let stride = 0;
     if (knight) {
       const amp = (mammoth ? 0.42 : 0.8) * move, ph = gait * (mammoth ? 0.3 : 0.72);
       rig.flLeg!.rotation.x = Math.sin(ph) * amp;
@@ -891,7 +917,7 @@ export class Engine {
       rig.blLeg!.rotation.x = Math.sin(ph + Math.PI + 0.4) * amp;
       rig.body.rotation.x = Math.sin(ph) * 0.07 * move;
     } else {
-      const stride = (zombie ? 0.36 : u.kind === "giant" || u.kind === "troll" ? 0.45 : 0.65) * move;
+      stride = (zombie ? 0.36 : u.kind === "giant" || u.kind === "troll" ? 0.45 : 0.65) * move;
       rig.lLeg.rotation.x = sw * stride;
       rig.rLeg.rotation.x = zombie ? -sw * stride * 0.4 + 0.18 * move : -sw * stride;
     }
@@ -911,6 +937,14 @@ export class Engine {
 
     // Leg drive from a lunge: the stance widens, the rear leg drives, the front leg plants.
     let frontLeg = 0, rearLeg = 0, hipShift = 0;
+    // Squash & stretch along the spine, and whether the blade is cutting right now (for the ribbon trail).
+    let stretch = 0;
+    let cutting = false;
+    // Successive swings alternate forehand / backhand. `x` counts swings, `v` remembers the last phase seen.
+    const combo = rig.fx.combo ?? (rig.fx.combo = { x: 0, v: -1 });
+    if (att >= 0 && att < combo.v - 0.3) combo.x++;
+    combo.v = att;
+    const backhand = (combo.x & 1) === 1;
 
     if (att >= 0) {
       const rate = (d.rage ? 0.45 + 0.55 * (u.hp / u.maxHp) : 1) * (u.slowT > 0 ? 1.55 : 1);
@@ -932,7 +966,10 @@ export class Engine {
         hipShift = -0.12 * w + 0.3 * snap - 0.12 * settle;
       }
 
-      this.trailOn = true;
+      const heavyBlow = u.kind === "giant" || u.kind === "troll" || u.kind === "berserker" || u.kind === "paladin";
+      stretch = att < split ? -0.055 * w : (heavyBlow ? 0.1 : 0.07) * snap * (1 - settle) - 0.04 * settle * (1 - settle) * 4;
+      cutting = !d.ranged && att >= split * 0.9 && settle < 0.5
+        && pose.style !== "cast" && pose.style !== "heal" && pose.style !== "shoot";
       switch (pose.style) {
         case "thrust":
           // Pull shoulder & hip back while crouching, then drive spear cleanly forward along +Z
@@ -958,7 +995,9 @@ export class Engine {
           rX = att < split ? lerp(pose.r, -2.8, w) : lerp(-2.8, 0.4, snap) - 0.35 * settle;
           lX = twoHand ? (att < split ? lerp(pose.l, -2.6, w) : lerp(-2.6, 0.3, snap) - 0.3 * settle) : lerp(pose.l, 0.45, snap);
           hX = att < split ? lerp(rig.handRest, -0.6, w) : lerp(-0.6, -0.7, snap);
-          crouch = att < split ? -0.1 * w : -0.14 * snap;
+          // Heavy hitters rise onto their toes at the top of the swing, then drop their whole weight into it.
+          crouch = att < split ? (heavyBlow ? 0.1 * w * w : -0.1 * w) : (heavyBlow ? 0.1 * (1 - snap) - 0.22 * snap + 0.1 * settle : -0.14 * snap);
+          if (!twoHand && backhand) { rZ = att < split ? -0.5 * w : lerp(-0.5, 0.45, snap); rY = att < split ? -0.3 * w : lerp(-0.3, 0.35, snap); }
           tX += att < split ? -0.36 * w : 0.58 * snap - 0.36 * (1 - snap);
           tY = att < split ? -0.22 * w : lerp(-0.22, 0.3, snap);
           lunge = att < split ? -0.16 * w : 0.52 * snap;
@@ -983,6 +1022,15 @@ export class Engine {
             lZ = 0.15;
           }
           tY = att < split ? -0.62 * w : lerp(-0.62, 0.75, snap) + 0.14 * settle;
+          if (backhand) {
+            // Return stroke: the blade starts across the body and rips back out to the weapon side.
+            rX = att < split ? lerp(pose.r, -1.25, w) : lerp(-1.25, -0.75, snap) - 0.2 * settle;
+            rY = att < split ? 0.95 * w : lerp(0.95, -0.7, snap);
+            rZ = att < split ? lerp(-0.08, 0.85, w) : lerp(0.85, -1.05, snap);
+            hZ = att < split ? 0.3 * w : -0.45 * snap;
+            tY = att < split ? 0.55 * w : lerp(0.55, -0.6, snap) - 0.12 * settle;
+            if (dual) { lY = -rY * 0.7; lZ = -rZ * 0.75; }
+          }
           tX += att < split ? -0.12 * w : 0.3 * snap;
           crouch = att < split ? -0.12 * w : -0.07 * snap;
           lunge = att < split ? -0.08 * w : 0.45 * snap - 0.08 * settle;
@@ -1037,19 +1085,14 @@ export class Engine {
       }
     }
 
-    // Weapon trail: sample the blade tip while the attack is in motion.
-    if (this.trailOn && att >= 0 && att <= 1) {
-      const tip = this.tipScratch;
-      rig.hand.getWorldPosition(tip);
-      const reach = DEFS[u.kind].range * 0.75;
-      tip.x += Math.sin(u.facing) * reach;
-      tip.z += Math.cos(u.facing) * reach;
-      tip.y += 0.2;
-      this.fx.trail(String(u.id), tip.x, tip.y, tip.z, 0xfff0c8);
-    } else if (this.trailOn) {
-      this.fx.endTrail(String(u.id));
+    // Weapon trail: the ribbon is swept by the real blade edge while it is cutting.
+    if (cutting && this.quality === "standard" && rig.tip.lengthSq() > 0.3) {
+      const tip = this.tipScratch.copy(rig.tip).applyMatrix4(rig.hand.matrixWorld);
+      // The ribbon covers the outer part of the weapon: about half a blade, never more than a hand-span of a polearm.
+      const len = rig.tip.length();
+      const base = this.baseScratch.copy(rig.tip).multiplyScalar(1 - Math.min(0.5, 0.62 / len)).applyMatrix4(rig.hand.matrixWorld);
+      this.fx.trail(String(u.id), tip.x, tip.y, tip.z, base.x, base.y, base.z, trailColor(u.kind), 0.4);
     }
-    this.trailOn = false;
 
     // Lunge stance overrides the walk cycle while swinging.
     if (frontLeg !== 0 || rearLeg !== 0 || hipShift !== 0) {
@@ -1071,7 +1114,10 @@ export class Engine {
     rig.torso.rotation.z = Math.sin(t * 0.8) * 0.02 + sw * 0.05 * move + (zombie ? Math.sin(gait * 0.5) * 0.08 * move : 0);
     const bob = Math.abs(sw) * (u.kind === "giant" || u.kind === "troll" ? 0.14 : knight ? 0.08 : 0.1) * move
       + Math.sin(t * 1.7) * 0.014 * (1 - move);
-    rig.body.position.y = bob + sp("cr", crouch, 18, 0.65);
+    const crouchNow = sp("cr", crouch, 18, 0.65);
+    rig.body.position.y = bob + crouchNow;
+    const st = sp("st", stretch, 26, 0.5);
+    rig.body.scale.set(1 - st * 0.45, 1 + st, 1 - st * 0.45);
     rig.body.position.z = sp("lg", lunge - flinch * 0.35, 18, 0.6);
     rig.body.rotation.z = sw * 0.045 * move;
 
@@ -1097,6 +1143,28 @@ export class Engine {
       rig.rLeg.rotation.x = 0.2 + move * 0.55 - Math.sin(t * 2.1) * 0.06;
       rig.root.rotation.x = sp("dive", move * 0.42, 8, 0.8);
       rig.root.position.y = sp("alt", FLY_ALTITUDE, 5, 0.9) + Math.sin(t * 2.3) * 0.16;
+    }
+    if (rig.lShin && rig.rShin) {
+      // Knees: the swinging leg folds through the stride, the lead leg bends into a lunge,
+      // and a crouch is absorbed by the legs so the feet stay on the ground.
+      let lK: number, rK: number;
+      if (flyer) {
+        lK = 0.55 + Math.sin(t * 2.1) * 0.1; rK = 0.8 - Math.sin(t * 2.1) * 0.1;
+      } else if (frontLeg !== 0 || rearLeg !== 0) {
+        lK = 0.08 + Math.max(0, -frontLeg) * 1.3;
+        rK = 0.05 + Math.max(0, rearLeg) * 0.3;
+      } else {
+        const fold = stride * (zombie ? 0.7 : 1.55), c = Math.cos(gait);
+        lK = 0.05 + fold * Math.max(0, -c);
+        rK = 0.05 + fold * Math.max(0, c) * (zombie ? 0.3 : 1);
+      }
+      if (!flyer && crouchNow < 0) {
+        const fold = Math.acos(clamp(1 + crouchNow / (0.92 * rig.scale), 0.6, 1));
+        rig.lLeg.rotation.x -= fold; rig.rLeg.rotation.x -= fold;
+        lK += fold * 2; rK += fold * 2;
+      }
+      rig.lShin.rotation.x = sp("lk", lK, 26, 0.72);
+      rig.rShin.rotation.x = sp("rk", rK, 26, 0.72);
     }
     if (u.kind === "snake") {
       // The coils ripple from side to side instead of striding.
@@ -1301,23 +1369,6 @@ export class Engine {
 
   /* ================= effects ================= */
 
-  private burst(x: number, y: number, z: number, color: number, n: number, speed: number, size: number, life: number, grow = 0, gravity = 9) {
-    for (let i = 0; i < n; i++) {
-      const p = this.particles[this.particleIndex++ % this.particles.length];
-      p.mesh.position.set(x, y, z);
-      p.mesh.material.color.setHex(color);
-      p.mesh.material.opacity = 0.9;
-      p.mesh.scale.setScalar(size * (0.6 + ((i * 37) % 10) / 12));
-      p.mesh.visible = true;
-      const a = (i / n) * Math.PI * 2 + (i * 1.7);
-      const s = speed * (0.5 + ((i * 53) % 10) / 12);
-      p.velocity.set(Math.cos(a) * s, 1.2 + ((i * 29) % 10) / 4, Math.sin(a) * s);
-      p.life = p.duration = life * (0.7 + ((i * 17) % 10) / 20);
-      p.grow = grow;
-      p.gravity = gravity;
-    }
-  }
-
   /** Screen-space stereo pan for a world position, so hits land where you see them. */
   private panAt(x: number, z: number): number {
     const p = this.proj(x, 1, z);
@@ -1325,28 +1376,33 @@ export class Engine {
     return clamp((p.x / this.width) * 2 - 1, -1, 1);
   }
 
-  private facingDir(u: { facing: number }): [number, number] {
-    return [Math.sin(u.facing), Math.cos(u.facing)];
-  }
-
+  /** The visible cut of a melee swing, shaped by how that unit attacks. */
   private slashArc(u: CombatUnit) {
     const d = DEFS[u.kind];
+    const rig = this.views.get(u.id);
+    const style = POSE[u.kind].style;
+    if (!rig || d.ranged || style === "cast" || style === "heal" || style === "shoot") return;
     const fx = Math.sin(u.facing), fz = Math.cos(u.facing);
-    const px = -fz, pz = fx;
-    for (let i = 0; i < 7; i++) {
-      const k = (i / 6 - 0.5) * 2;
-      const r = d.range * 0.55;
-      const p = this.particles[this.particleIndex++ % this.particles.length];
-      p.mesh.position.set(u.position.x + fx * r + px * k * r * 0.7, d.height * 0.6 + Math.abs(k) * 0.2, u.position.z + fz * r + pz * k * r * 0.7);
-      p.mesh.material.color.setHex(0xfff6d8);
-      p.mesh.material.opacity = 0.85;
-      p.mesh.scale.setScalar(0.1 + Math.abs(k) * 0.05);
-      p.mesh.visible = true;
-      p.velocity.set(px * k * 2.4, 1.1, pz * k * 2.4);
-      p.life = p.duration = 0.14;
-      p.grow = 0.9;
-      p.gravity = 0.4;
+    const color = trailColor(u.kind);
+    const reach = clamp((rig.tip.length() + 0.55) * rig.scale, 1.1, 4.2);
+    const y = rig.root.position.y + d.height * 0.6;
+    const x = u.position.x + fx * 0.1, z = u.position.z + fz * 0.1;
+    const back = ((rig.fx.combo?.x ?? 0) & 1) === 1;
+    if (style === "thrust" || style === "lance") {
+      const len = style === "lance" ? 4.2 : Math.max(1.6, reach * 0.8);
+      this.fx.streak(x + fx * reach * 0.35, y - 0.1, z + fz * reach * 0.35, fx, 0, fz, len, color, 20);
+      this.fx.streak(x + fx * reach * 0.35, y - 0.1, z + fz * reach * 0.35, fx, 0, fz, len * 0.55, 0xffffff, 26);
+      return;
     }
+    if (style === "overhead") {
+      const heavy = u.kind === "giant" || u.kind === "troll";
+      this.fx.slash(x, y - d.height * 0.06, z, fx, fz, reach * 0.82, (back ? -1 : 1) * (Math.PI / 2 - 0.22), back ? -1 : 1, color, heavy ? 0.8 : 0.66, heavy ? 0.26 : 0.2);
+      return;
+    }
+    const dual = u.kind === "assassin" || u.kind === "vampire" || u.kind === "swordsman" || style === "claw";
+    const tilt = back ? 0.42 : -0.42;
+    this.fx.slash(x, y, z, fx, fz, reach, tilt, back ? -1 : 1, color);
+    if (dual) this.fx.slash(x, y - 0.25, z, fx, fz, reach * 0.82, -tilt * 1.2, back ? 1 : -1, color, 0.55, 0.17);
   }
 
   private processEffects(dt: number) {
@@ -1378,11 +1434,7 @@ export class Engine {
         case "swing": {
           this.audio.sfx("swing", this.panAt(p.x, p.z));
           const u = this.sim.units.find(x => !x.dead && x.position.distanceToSquared(p) < 4);
-          if (u && !crowded) {
-            this.slashArc(u);
-            const [fx2, fz2] = this.facingDir(u);
-            this.fx.puff(u.position.x + fx2 * 0.8, 1.2, u.position.z + fz2 * 0.8, 2, 0.4, 0xd8d0b8, 0.5, 0.35);
-          }
+          if (u && !crowded) this.slashArc(u);
           break;
         }
         case "hit": {
@@ -2533,6 +2585,8 @@ export class Engine {
     this.stageEnv?.dispose();
     this.stageEnv = null;
     this.unitRenderer.dispose();
+    setRigEnvironment(null);
+    this.envMap?.dispose();
     this.fx.dispose();
     const sharedGeo = new Set<THREE.BufferGeometry>(Object.values(GEO));
     const geometries = new Set<THREE.BufferGeometry>();

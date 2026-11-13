@@ -307,8 +307,52 @@ export const FIELD = { x: 78, z: 52 };
 
 /* ============ shared geometry & materials ============ */
 
+/**
+ * Unit cube with chamfered edges and corners. It keeps the 24 vertices of a plain box (four per face,
+ * each carrying its face normal), so the bevel strips shade as a smooth rounded edge for free.
+ */
+function bevelBox(bevel = 0.1): THREE.BufferGeometry {
+  const pos: number[] = [], norm: number[] = [], idx: number[] = [];
+  const h = 0.5, i = 0.5 - bevel;
+  const id = (axis: number, s: number, su: number, sv: number) => axis * 8 + (s > 0 ? 4 : 0) + (su > 0 ? 2 : 0) + (sv > 0 ? 1 : 0);
+  for (let axis = 0; axis < 3; axis++) for (const s of [-1, 1]) for (const su of [-1, 1]) for (const sv of [-1, 1]) {
+    const p = [0, 0, 0], n = [0, 0, 0];
+    p[axis] = s * h; p[(axis + 1) % 3] = su * i; p[(axis + 2) % 3] = sv * i;
+    n[axis] = s;
+    pos.push(p[0], p[1], p[2]); norm.push(n[0], n[1], n[2]);
+  }
+  const tri = (a: number, b: number, c: number) => {
+    // Wind every triangle outward from the cube's centre.
+    const ax = pos[a * 3], ay = pos[a * 3 + 1], az = pos[a * 3 + 2];
+    const ux = pos[b * 3] - ax, uy = pos[b * 3 + 1] - ay, uz = pos[b * 3 + 2] - az;
+    const vx = pos[c * 3] - ax, vy = pos[c * 3 + 1] - ay, vz = pos[c * 3 + 2] - az;
+    const d = (uy * vz - uz * vy) * ax + (uz * vx - ux * vz) * ay + (ux * vy - uy * vx) * az;
+    if (d >= 0) idx.push(a, b, c); else idx.push(a, c, b);
+  };
+  const quad = (a: number, b: number, c: number, d: number) => { tri(a, b, c); tri(a, c, d); };
+  for (let axis = 0; axis < 3; axis++) for (const s of [-1, 1]) {
+    quad(id(axis, s, -1, -1), id(axis, s, 1, -1), id(axis, s, 1, 1), id(axis, s, -1, 1));
+  }
+  // Edge strips: between the face on `axis` and the face on the next axis, running along the third.
+  for (let axis = 0; axis < 3; axis++) for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
+    const next = (axis + 1) % 3;
+    // On face(axis): u = next axis, v = third axis. On face(next): u = third axis, v = axis.
+    quad(id(axis, sa, sb, -1), id(axis, sa, sb, 1), id(next, sb, 1, sa), id(next, sb, -1, sa));
+  }
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    tri(id(0, sx, sy, sz), id(1, sy, sz, sx), id(2, sz, sx, sy));
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(norm, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Array(48).fill(0), 2));
+  g.setIndex(idx);
+  return g;
+}
+
 export const GEO = {
   box: new THREE.BoxGeometry(1, 1, 1),
+  bevel: bevelBox(0.1),
   sph: new THREE.SphereGeometry(1, 12, 9),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 10),
   cone: new THREE.ConeGeometry(1, 1, 10),

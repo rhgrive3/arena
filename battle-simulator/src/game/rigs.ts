@@ -23,6 +23,11 @@ export interface UnitRig {
   lArm: THREE.Group;
   rArm: THREE.Group;
   cloak: THREE.Group | null;
+  /** Knee joints of two-legged rigs: everything below the knee hangs off these. */
+  lShin?: THREE.Group;
+  rShin?: THREE.Group;
+  /** Farthest point of the held weapon, in the hand's local space (the blade tip for trails). */
+  tip: THREE.Vector3;
   flLeg?: THREE.Group;
   frLeg?: THREE.Group;
   blLeg?: THREE.Group;
@@ -60,6 +65,8 @@ function part(
   parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material,
   sx: number, sy: number, sz: number, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0,
 ): THREE.Mesh {
+  // Body-sized blocks get chamfered edges; slivers and tiny trim stay plain so the triangle budget holds.
+  if (geo === GEO.box && Math.min(sx, sy, sz) >= 0.075 && Math.max(sx, sy, sz) >= 0.16) geo = GEO.bevel;
   const m = new THREE.Mesh(geo, mat);
   m.scale.set(sx, sy, sz);
   m.position.set(x, y, z);
@@ -186,34 +193,45 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   root.add(body);
   const hipY = 1.02 * L.legs;
 
+  const kneeY = -0.45 * L.legs;
+  const shins: THREE.Group[] = [];
   const mkLeg = (side: number) => {
     const p = new THREE.Group();
     p.position.set(side * (0.17 + cw * 0.05), hipY, 0);
     body.add(p);
+    // The shin group pivots at the knee; its parts are authored in hip space and shifted down to it.
+    const shin = new THREE.Group();
+    shin.position.set(0, kneeY, 0);
+    p.add(shin);
+    shins.push(shin);
+    const low = (geo: THREE.BufferGeometry, mat: THREE.Material, sx: number, sy: number, sz: number, x: number, y: number, z: number) =>
+      part(shin, geo, mat, sx, sy, sz, x, y - kneeY, z);
     if (skel) {
       part(p, GEO.sph, boneMat(L.skin), 0.078, 0.078, 0.078, 0, -0.04, 0);
       part(p, GEO.cyl, boneMat(L.skin), 0.048, 0.42 * L.legs, 0.048, 0, -0.24 * L.legs, 0);
-      part(p, GEO.sph, boneMat(L.pants), 0.082, 0.076, 0.086, 0, -0.45 * L.legs, 0.02);
-      part(p, GEO.cyl, boneMat(L.pants), 0.042, 0.42 * L.legs, 0.042, side * 0.012, -0.67 * L.legs, 0);
-      part(p, GEO.cyl, boneMat(BONE_DARK), 0.024, 0.38 * L.legs, 0.024, -side * 0.022, -0.67 * L.legs, -0.012);
-      part(p, GEO.box, boneMat(L.boot), 0.11, 0.085, 0.24, 0, -0.92 * L.legs, 0.05);
-      for (const t of [-0.032, 0, 0.032]) part(p, GEO.box, boneMat(L.skin), 0.02, 0.036, 0.075, t, -0.94 * L.legs, 0.165);
+      low(GEO.sph, boneMat(L.pants), 0.082, 0.076, 0.086, 0, -0.45 * L.legs, 0.02);
+      low(GEO.cyl, boneMat(L.pants), 0.042, 0.42 * L.legs, 0.042, side * 0.012, -0.67 * L.legs, 0);
+      low(GEO.cyl, boneMat(BONE_DARK), 0.024, 0.38 * L.legs, 0.024, -side * 0.022, -0.67 * L.legs, -0.012);
+      low(GEO.box, boneMat(L.boot), 0.11, 0.085, 0.24, 0, -0.92 * L.legs, 0.05);
+      for (const t of [-0.032, 0, 0.032]) low(GEO.box, boneMat(L.skin), 0.02, 0.036, 0.075, t, -0.94 * L.legs, 0.165);
       return p;
     }
     const th = kind === "orc" || kind === "troll" || kind === "giant" ? 0.28 : 0.24;
     const shinM = armored ? (kind === "paladin" ? steel(0xd8dbe2) : kind === "king" || kind === "zeus" ? gold(L.boot) : steel(STEEL_DARK)) : M(L.pants, 0.8);
     part(p, GEO.box, M(L.pants, 0.82), th, 0.46 * L.legs, th * 1.12, 0, -0.23 * L.legs, 0);
-    part(p, GEO.box, shinM, th * 0.9, 0.42 * L.legs, th * 1.02, 0, -0.67 * L.legs, -0.01);
+    low(GEO.box, shinM, th * 0.9, 0.42 * L.legs, th * 1.02, 0, -0.67 * L.legs, -0.01);
     const kneeM = armored ? (kind === "paladin" || kind === "king" || kind === "zeus" ? gold() : steel(STEEL_LIGHT)) : leather(0x3d2d1d);
-    part(p, GEO.sph, kneeM, th * 0.56, 0.11, th * 0.62, 0, -0.45 * L.legs, th * 0.42);
-    part(p, GEO.box, kneeM, th * 1.08, 0.09, th * 1.16, 0, -0.45 * L.legs, 0.01);
-    if (armored) part(p, GEO.box, kneeM, 0.035, 0.14, 0.12, side * th * 0.56, -0.45 * L.legs, 0.04);
-    part(p, GEO.box, leather(LEATHER_DARK), th * 0.98, 0.09, th * 1.08, 0, -0.82 * L.legs, 0);
-    part(p, GEO.box, armored ? shinM : leather(L.boot), th * 1.06, 0.16, th * 1.5, 0, -0.92 * L.legs, 0.05);
-    part(p, GEO.sph, armored ? shinM : leather(L.boot), th * 0.5, 0.08, th * 0.55, 0, -0.93 * L.legs, 0.18);
-    part(p, GEO.box, M(0x18130e, 0.9), th * 1.08, 0.045, th * 1.56, 0, -0.99 * L.legs, 0.05);
+    low(GEO.sph, kneeM, th * 0.56, 0.11, th * 0.62, 0, -0.45 * L.legs, th * 0.42);
+    low(GEO.box, kneeM, th * 1.08, 0.09, th * 1.16, 0, -0.45 * L.legs, 0.01);
+    // A ball joint fills the gap that opens behind a bent knee.
+    part(p, GEO.sph, M(L.pants, 0.82), th * 0.5, th * 0.5, th * 0.54, 0, -0.45 * L.legs, 0);
+    if (armored) low(GEO.box, kneeM, 0.035, 0.14, 0.12, side * th * 0.56, -0.45 * L.legs, 0.04);
+    low(GEO.box, leather(LEATHER_DARK), th * 0.98, 0.09, th * 1.08, 0, -0.82 * L.legs, 0);
+    low(GEO.box, armored ? shinM : leather(L.boot), th * 1.06, 0.16, th * 1.5, 0, -0.92 * L.legs, 0.05);
+    low(GEO.sph, armored ? shinM : leather(L.boot), th * 0.5, 0.08, th * 0.55, 0, -0.93 * L.legs, 0.18);
+    low(GEO.box, M(0x18130e, 0.9), th * 1.08, 0.045, th * 1.56, 0, -0.99 * L.legs, 0.05);
     if (kind === "orc" || kind === "giant" || kind === "berserker" || kind === "troll") part(p, GEO.box, M(0x4a3a28), th * 1.18, 0.11, th * 1.26, 0, -0.3 * L.legs, 0);
-    if (kind === "zombie" && side < 0) part(p, GEO.box, boneMat(), 0.085, 0.16, 0.085, 0, -0.58 * L.legs, 0.09);
+    if (kind === "zombie" && side < 0) low(GEO.box, boneMat(), 0.085, 0.16, 0.085, 0, -0.58 * L.legs, 0.09);
     return p;
   };
   const lLeg = mkLeg(1), rLeg = mkLeg(-1);
@@ -1204,7 +1222,8 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   const headH = (hipY + 1.45 + 0.28 * L.head + headExtra) * L.scale;
   return {
     root, body, torso, head, hand, lLeg, rLeg, lArm, rArm, cloak, headH, heavy: kind === "giant" || kind === "troll",
-    scale: L.scale, tilt: L.tilt, kind, handMode, handRest, parts: [], fx: {},
+    scale: L.scale, tilt: L.tilt, kind, handMode, handRest, parts: [], fx: {}, tip: new THREE.Vector3(),
+    lShin: shins[0], rShin: shins[1],
   };
 }
 
@@ -1374,7 +1393,7 @@ function buildRobot(team: TeamId): UnitRig {
   return {
     root, body, torso, head, hand, lLeg, rLeg, lArm, rArm, cloak,
     headH: 2.9, heavy: false, scale: 1, tilt: 0.02, kind: "robot",
-    handMode: "follow", handRest: 0, parts: [], fx: {},
+    handMode: "follow", handRest: 0, parts: [], fx: {}, tip: new THREE.Vector3(),
   };
 }
 
@@ -1443,7 +1462,7 @@ function buildTank(team: TeamId): UnitRig {
   return {
     root, body, torso, head, hand, lLeg, rLeg, lArm, rArm, cloak: null,
     headH: 2.6, heavy: true, scale: 1, tilt: 0.02, kind: "tank",
-    handMode: "fixed", handRest: -0.2, parts: [], fx: {},
+    handMode: "fixed", handRest: -0.2, parts: [], fx: {}, tip: new THREE.Vector3(),
   };
 }
 
@@ -1514,7 +1533,7 @@ function buildCatapult(team: TeamId): UnitRig {
   return {
     root, body, torso, head, hand, lLeg, rLeg, lArm, rArm, cloak: null,
     headH: 2.7, heavy: true, scale: 1, tilt: 0, kind: "catapult",
-    handMode: "fixed", handRest: -0.25, parts: [], fx: {},
+    handMode: "fixed", handRest: -0.25, parts: [], fx: {}, tip: new THREE.Vector3(),
   };
 }
 
@@ -1578,7 +1597,7 @@ function buildRailgun(team: TeamId): UnitRig {
   return {
     root, body, torso, head, hand, lLeg, rLeg, lArm, rArm, cloak: null,
     headH: 2.7, heavy: false, scale: 1, tilt: 0.02, kind: "railgun",
-    handMode: "fixed", handRest: -1.15, parts: [], fx: {},
+    handMode: "fixed", handRest: -1.15, parts: [], fx: {}, tip: new THREE.Vector3(),
   };
 }
 
@@ -1650,7 +1669,7 @@ function buildHwacha(team: TeamId): UnitRig {
   return {
     root, body, torso, head, hand, lLeg, rLeg, lArm, rArm, cloak: null,
     headH: 2.9, heavy: true, scale: 1, tilt: 0, kind: "hwacha",
-    handMode: "fixed", handRest: 0, parts: [], fx: {},
+    handMode: "fixed", handRest: 0, parts: [], fx: {}, tip: new THREE.Vector3(),
   };
 }
 
@@ -1735,7 +1754,7 @@ function buildMammoth(team: TeamId): UnitRig {
   return {
     root, body, torso, head, hand, lLeg: flLeg, rLeg: frLeg, lArm, rArm, cloak: null,
     flLeg, frLeg, blLeg, brLeg, headH: 4.9, heavy: true, scale: 1, tilt: 0, kind: "mammoth",
-    handMode: "follow", handRest: 0, parts: [], fx: {},
+    handMode: "follow", handRest: 0, parts: [], fx: {}, tip: new THREE.Vector3(),
   };
 }
 
@@ -1778,7 +1797,7 @@ function buildSnake(team: TeamId): UnitRig {
   return {
     root, body, torso, head, hand, lLeg, rLeg, lArm, rArm, cloak: null,
     headH: 0.9, heavy: false, scale: 1, tilt: 0, kind: "snake",
-    handMode: "follow", handRest: 0, parts: [], fx: {},
+    handMode: "follow", handRest: 0, parts: [], fx: {}, tip: new THREE.Vector3(),
   };
 }
 
@@ -1881,7 +1900,7 @@ function buildKnight(team: TeamId): UnitRig {
   return {
     root, body, torso, head, hand, lLeg: flLeg, rLeg: frLeg, lArm, rArm, cloak,
     flLeg, frLeg, blLeg, brLeg, headH: 3.7, heavy: true, scale: 1, tilt: 0.06, kind: "knight",
-    handMode: "fixed", handRest: -0.1, parts: [], fx: {},
+    handMode: "fixed", handRest: -0.1, parts: [], fx: {}, tip: new THREE.Vector3(),
   };
 }
 
@@ -1890,6 +1909,14 @@ function buildKnight(team: TeamId): UnitRig {
 const MAT_STD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.05 });
 const MAT_METAL = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.78 });
 const MAT_BASIC = new THREE.MeshBasicMaterial({ vertexColors: true });
+
+/** Gives every unit a shared reflection probe. Metal mirrors it; cloth and skin only pick up a soft fill. */
+export function getRigEnvironment() { return MAT_METAL.envMap; }
+export function setRigEnvironment(env: THREE.Texture | null) {
+  MAT_STD.envMap = env; MAT_STD.envMapIntensity = 0.3;
+  MAT_METAL.envMap = env; MAT_METAL.envMapIntensity = 0.62;
+  MAT_STD.needsUpdate = MAT_METAL.needsUpdate = true;
+}
 const CLASS_MAT: THREE.Material[] = [MAT_STD, MAT_METAL, MAT_BASIC];
 
 function classOf(m: THREE.Material): 0 | 1 | 2 {
@@ -1948,6 +1975,18 @@ function bake(template: UnitRig): Baked {
       }
     });
   }
+  // Weapon tip: the vertex of the hand's geometry that reaches farthest from the grip.
+  let far = 0;
+  const v = new THREE.Vector3();
+  for (const spec of specs) {
+    if (spec.group !== template.hand) continue;
+    const pos = spec.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const d = v.lengthSq();
+      if (d > far) { far = d; template.tip.copy(v); }
+    }
+  }
   return { template, specs };
 }
 
@@ -1971,6 +2010,7 @@ function instantiate(b: Baked): UnitRig {
     root, body: pick(t.body)!, torso: pick(t.torso)!, head: pick(t.head)!, hand: pick(t.hand)!,
     lLeg: pick(t.lLeg)!, rLeg: pick(t.rLeg)!, lArm: pick(t.lArm)!, rArm: pick(t.rArm)!, cloak: pick(t.cloak) ?? null,
     flLeg: pick(t.flLeg), frLeg: pick(t.frLeg), blLeg: pick(t.blLeg), brLeg: pick(t.brLeg),
+    lShin: pick(t.lShin), rShin: pick(t.rShin), tip: t.tip,
     headH: t.headH, heavy: t.heavy, scale: t.scale, tilt: t.tilt, kind: t.kind, handMode: t.handMode, handRest: t.handRest,
     parts: b.specs.map(s => ({ group: map.get(s.group)!, geometry: s.geometry, material: s.material })),
     fx: {},

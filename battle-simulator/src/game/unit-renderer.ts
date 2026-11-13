@@ -3,7 +3,8 @@ import type { UnitRig } from "./rigs";
 
 interface Batch { mesh: THREE.InstancedMesh }
 interface Slot { group: THREE.Group; batch: Batch }
-interface Entry { rig: UnitRig; slots: Slot[] }
+interface Entry { rig: UnitRig; slots: Slot[]; flash: number }
+const TINT = new THREE.Color();
 
 /**
  * Draws baked rig parts with InstancedMesh. One instance per (unit, bone, material class),
@@ -32,13 +33,15 @@ export class UnitBatchRenderer {
       }
       slots.push({ group: part.group, batch });
     }
-    this.entries.set(id, { rig, slots });
+    this.entries.set(id, { rig, slots, flash: 0 });
   }
 
   private createMesh(geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number) {
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
+    mesh.setColorAt(0, TINT.setRGB(1, 1, 1));
+    mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
     mesh.castShadow = !(material instanceof THREE.MeshBasicMaterial);
     mesh.frustumCulled = false;
     this.scene.add(mesh);
@@ -59,12 +62,16 @@ export class UnitBatchRenderer {
     for (const batch of this.batches.values()) batch.mesh.count = 0;
     for (const entry of this.entries.values()) {
       entry.rig.root.updateMatrixWorld(true);
+      // A struck unit flashes white-hot for a few frames: instance colour multiplies the baked vertex colours.
+      const f = 1 + entry.flash * 2.6;
+      TINT.setRGB(f, f, f);
       for (const slot of entry.slots) {
         const mesh = slot.batch.mesh;
         const index = mesh.count;
         if (index >= mesh.instanceMatrix.count) this.grow(slot.batch);
         const target = slot.batch.mesh;
         target.setMatrixAt(index, slot.group.matrixWorld);
+        target.setColorAt(index, TINT);
         target.count = index + 1;
       }
     }
@@ -74,8 +81,18 @@ export class UnitBatchRenderer {
         mesh.instanceMatrix.clearUpdateRanges();
         mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16);
         mesh.instanceMatrix.needsUpdate = true;
+        const colors = mesh.instanceColor!;
+        colors.clearUpdateRanges();
+        colors.addUpdateRange(0, mesh.count * 3);
+        colors.needsUpdate = true;
       }
     }
+  }
+
+  /** 0 = normal, 1 = the brightest frame of a hit flash. */
+  setFlash(id: number, amount: number) {
+    const entry = this.entries.get(id);
+    if (entry) entry.flash = amount;
   }
 
   remove(id: number) { this.entries.delete(id); }

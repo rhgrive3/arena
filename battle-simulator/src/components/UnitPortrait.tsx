@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Shield } from 'lucide-react';
-import { buildUnitRig, type UnitRig } from '../game/rigs';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { buildUnitRig, getRigEnvironment, setRigEnvironment, type UnitRig } from '../game/rigs';
 import { DEFS, type UnitKind } from '../game/units';
 
 const cache = new Map<UnitKind, string>();
@@ -13,6 +14,20 @@ function addModel(scene: THREE.Scene, kind: UnitKind): UnitRig {
   rig.root.rotation.y = -0.35;
   scene.add(rig.root);
   return rig;
+}
+
+/** Reflection probe for armour and blades. A probe belongs to the renderer that baked it. */
+const probes = new WeakMap<THREE.WebGLRenderer, THREE.Texture>();
+function addReflections(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
+  let probe = probes.get(renderer);
+  if (!probe) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    probe = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    probes.set(renderer, probe);
+  }
+  scene.environment = probe;
+  scene.environmentIntensity = 0.07;
 }
 
 function lightScene(scene: THREE.Scene) {
@@ -51,7 +66,12 @@ function renderPortrait(kind: UnitKind) {
   const model = addModel(scene, kind);
   const camera = new THREE.PerspectiveCamera(34, 320 / 360, 0.1, 100);
   frameModel(model.root, camera);
+  addReflections(scene, portraitRenderer);
+  // The battlefield may have lent the shared unit materials its own probe; it cannot be used from this renderer.
+  const lent = getRigEnvironment();
+  if (lent) setRigEnvironment(null);
   portraitRenderer.render(scene, camera);
+  if (lent) setRigEnvironment(lent);
   const url = portraitRenderer.domElement.toDataURL('image/png');
   cache.set(kind, url);
   return url;
@@ -84,6 +104,7 @@ export function UnitModel({ kind }: { kind: UnitKind }) {
     renderer.setClearColor(0x000000, 0);
     const scene = new THREE.Scene();
     lightScene(scene);
+    addReflections(scene, renderer);
     const rig = addModel(scene, kind);
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
     const canvas = renderer.domElement;
@@ -112,6 +133,7 @@ export function UnitModel({ kind }: { kind: UnitKind }) {
       cancelAnimationFrame(frame); observer.disconnect();
       canvas.removeEventListener('pointerdown', down); canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up); canvas.removeEventListener('pointercancel', up);
+      probes.get(renderer)?.dispose(); probes.delete(renderer);
       renderer.dispose(); renderer.forceContextLoss(); canvas.remove();
     };
   }, [kind]);
