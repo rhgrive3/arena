@@ -350,9 +350,98 @@ function bevelBox(bevel = 0.1): THREE.BufferGeometry {
   return g;
 }
 
+/**
+ * Smooth block that fills the unit cube: a superellipsoid. `n` is the roundness of the box
+ * (2 = ellipsoid, higher = boxier); `axis` >= 0 makes the cross-section around that axis a true circle,
+ * which turns the shape into a pill with softly rounded ends.
+ */
+function softBlock(n: number, axis = -1, w = 12, h = 8): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(0.5, w, h);
+  if (axis === 0) g.rotateZ(Math.PI / 2); else if (axis === 2) g.rotateX(Math.PI / 2);
+  const pos = g.attributes.position as THREE.BufferAttribute, nor = g.attributes.normal as THREE.BufferAttribute;
+  const d = [0, 0, 0], q = [0, 0, 0];
+  for (let i = 0; i < pos.count; i++) {
+    d[0] = pos.getX(i) * 2; d[1] = pos.getY(i) * 2; d[2] = pos.getZ(i) * 2;
+    const len = Math.hypot(d[0], d[1], d[2]) || 1;
+    d[0] /= len; d[1] /= len; d[2] /= len;
+    if (axis < 0) {
+      const s = 0.5 / Math.pow(Math.abs(d[0]) ** n + Math.abs(d[1]) ** n + Math.abs(d[2]) ** n, 1 / n);
+      for (let k = 0; k < 3; k++) q[k] = Math.sign(d[k]) * Math.abs(d[k] * s * 2) ** (n - 1);
+      pos.setXYZ(i, d[0] * s, d[1] * s, d[2] * s);
+    } else {
+      const a = (axis + 1) % 3, b = (axis + 2) % 3;
+      const r = Math.hypot(d[a], d[b]);
+      const s = 0.5 / Math.pow(r ** n + Math.abs(d[axis]) ** n, 1 / n);
+      const rs = r * s * 2;
+      q[a] = d[a] * rs ** (n - 2); q[b] = d[b] * rs ** (n - 2);
+      q[axis] = Math.sign(d[axis]) * Math.abs(d[axis] * s * 2) ** (n - 1);
+      pos.setXYZ(i, d[0] * s, d[1] * s, d[2] * s);
+    }
+    const ql = Math.hypot(q[0], q[1], q[2]) || 1;
+    nor.setXYZ(i, q[0] / ql, q[1] / ql, q[2] / ql);
+  }
+  return g;
+}
+
+/** Tapered limb segment along Y (top wider than bottom) with rounded ends; fills x,z ±0.5 at the top. */
+function limbSegment(taper: number, seg = 10): THREE.BufferGeometry {
+  const pts: THREE.Vector2[] = [];
+  const cap = 0.16, steps = 4;
+  for (let i = 0; i <= steps; i++) { const a = (i / steps) * Math.PI / 2; pts.push(new THREE.Vector2(Math.sin(a) * 0.5 * taper, -0.5 + cap * (1 - Math.cos(a)))); }
+  for (let i = steps; i >= 0; i--) { const a = (i / steps) * Math.PI / 2; pts.push(new THREE.Vector2(Math.sin(a) * 0.5, 0.5 - cap * (1 - Math.cos(a)))); }
+  return new THREE.LatheGeometry(pts, seg);
+}
+
+/**
+ * Cape panel filling x,y ±0.5: narrow at the collar, flaring to the hem, with three soft vertical folds.
+ * It is a closed two-sided shell so it renders from the front and the back with single-sided materials.
+ */
+function capeSheet(): THREE.BufferGeometry {
+  const nx = 8, ny = 5, pos: number[] = [], idx: number[] = [];
+  for (const side of [1, -1]) for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) {
+    const u = i / nx - 0.5, t = j / ny;
+    const width = 0.7 + 0.3 * t;
+    const fold = Math.cos(u * Math.PI * 6) * 0.9 * t + (1 - 4 * u * u) * -1.6;
+    pos.push(u * width, 0.5 - t, fold * 0.5 + side * 0.5);
+  }
+  const row = nx + 1, layer = row * (ny + 1);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const a = j * row + i, b = a + 1, c = a + row, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+    idx.push(layer + a, layer + b, layer + c, layer + b, layer + d, layer + c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Bell-shaped robe skirt with the footprint of a unit cone (radius 1, height 1): narrow waist, flared hem. */
+function robeSkirt(): THREE.BufferGeometry {
+  const pts: THREE.Vector2[] = [];
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    pts.push(new THREE.Vector2(0.5 + 0.38 * Math.pow(t, 1.4) + 0.12 * Math.pow(t, 6), 0.5 - t));
+  }
+  // Closed underneath so the hem reads as solid cloth from every camera angle.
+  pts.push(new THREE.Vector2(0.9, -0.5), new THREE.Vector2(0, -0.47));
+  return new THREE.LatheGeometry(pts.reverse(), 14);
+}
+
 export const GEO = {
   box: new THREE.BoxGeometry(1, 1, 1),
   bevel: bevelBox(0.1),
+  soft: softBlock(4, -1, 10, 6),
+  softer: softBlock(2.8, -1, 14, 10),
+  pillX: softBlock(5, 0, 8, 6),
+  pillY: softBlock(5, 1, 8, 6),
+  pillZ: softBlock(5, 2, 8, 6),
+  limb: limbSegment(0.72),
+  head: new THREE.SphereGeometry(1, 18, 14),
+  robe: robeSkirt(),
+  cape: capeSheet(),
   sph: new THREE.SphereGeometry(1, 12, 9),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 10),
   cone: new THREE.ConeGeometry(1, 1, 10),

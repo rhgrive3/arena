@@ -63,7 +63,7 @@ export class UnitBatchRenderer {
     for (const entry of this.entries.values()) {
       entry.rig.root.updateMatrixWorld(true);
       // A struck unit flashes white-hot for a few frames: instance colour multiplies the baked vertex colours.
-      const f = 1 + entry.flash * 2.6;
+      const f = 1 + entry.flash * 1.5;
       TINT.setRGB(f, f, f);
       for (const slot of entry.slots) {
         const mesh = slot.batch.mesh;

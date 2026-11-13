@@ -61,12 +61,29 @@ const leather = (c = LEATHER) => M(c, 0.78, 0.08);
 const cloth = (c: number) => M(c, 0.88, 0.04);
 const boneMat = (c = BONE) => M(c, 0.68, 0.06);
 
+/**
+ * Chooses the form of a block from its proportions, so nothing on a unit is a raw cube:
+ * rods become pills, plates keep crisp chamfered edges, and chunky volumes become soft rounded blocks.
+ */
+function sculpt(sx: number, sy: number, sz: number): THREE.BufferGeometry {
+  const dims = [sx, sy, sz];
+  const hi = Math.max(sx, sy, sz), lo = Math.min(sx, sy, sz);
+  const mid = sx + sy + sz - hi - lo;
+  if (hi < 0.09) return GEO.box;
+  if (lo < 0.07 || lo < mid * 0.34) {
+    // Square slabs lying flat (headbands, hat brims, bases) are discs; other plates keep crisp chamfers.
+    if (lo === sy && sy >= 0.03 && hi <= mid * 1.25 && hi >= 0.3) return GEO.pillY;
+    return lo >= 0.03 ? GEO.bevel : GEO.box;
+  }
+  if (hi >= mid * 1.7 && mid <= lo * 1.7) return [GEO.pillX, GEO.pillY, GEO.pillZ][dims.indexOf(hi)];
+  return GEO.soft;
+}
+
 function part(
   parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material,
   sx: number, sy: number, sz: number, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0,
 ): THREE.Mesh {
-  // Body-sized blocks get chamfered edges; slivers and tiny trim stay plain so the triangle budget holds.
-  if (geo === GEO.box && Math.min(sx, sy, sz) >= 0.075 && Math.max(sx, sy, sz) >= 0.16) geo = GEO.bevel;
+  if (geo === GEO.box) geo = sculpt(sx, sy, sz);
   const m = new THREE.Mesh(geo, mat);
   m.scale.set(sx, sy, sz);
   m.position.set(x, y, z);
@@ -87,49 +104,49 @@ interface Face {
 
 function addFace(head: THREE.Group, skin: number, f: Face = {}) {
   const sep = f.sep ?? 0.105, y = f.y ?? 0.03, z = f.z ?? 0.222, r = f.size ?? 0.064;
-  const skinDark = dark(skin, 0.78), skinShadow = dark(skin, 0.65);
+  const skinDark = dark(skin, 0.74);
+  const lip = dark(skin, 0.5);
+  // Monsters keep a coloured eyeball; everyone else gets clean, dark, glossy eyes.
+  const beast = f.sclera !== undefined;
   for (const s of [-1, 1]) {
-    const k = f.uneven && s > 0 ? 1.4 : 1;
+    const k = f.uneven && s > 0 ? 1.35 : 1;
+    const ex = s * sep, ez = z + 0.012;
     if (f.socket) {
-      part(head, GEO.sph, boneMat(BONE_DARK), r * 1.72, r * 1.9, r * 0.96, s * sep, y, z - 0.008);
-      part(head, GEO.sph, B(0x0b0907), r * 1.55, r * 1.75, r * 0.9, s * sep, y, z);
-      part(head, GEO.sph, B(f.pupil ?? 0x7fe8ff), r * 0.56, r * 0.56, r * 0.42, s * sep, y - 0.005, z + r * 0.46);
-      part(head, GEO.sph, B(0xffffff), r * 0.22, r * 0.22, r * 0.15, s * sep + r * 0.12, y + r * 0.12, z + r * 0.72);
+      part(head, GEO.sph, B(0x0b0907), r * 1.5, r * 1.7, r * 0.8, ex, y, z);
+      part(head, GEO.sph, B(f.pupil ?? 0x7fe8ff), r * 0.52, r * 0.52, r * 0.4, ex, y - 0.005, z + r * 0.44);
+      part(head, GEO.sph, B(0xffffff), r * 0.18, r * 0.18, r * 0.12, ex + r * 0.12, y + r * 0.12, z + r * 0.7);
+    } else if (beast) {
+      part(head, GEO.sph, M(skinDark, 0.7), r * 1.22 * k, r * 1.02 * k, r * 0.5, ex, y, ez - 0.016);
+      part(head, GEO.sph, B(f.sclera!), r * 1.0 * k, r * 0.8 * k, r * 0.5, ex, y, ez);
+      part(head, GEO.sph, B(f.pupil ?? 0x16110d), r * 0.46 * k, r * 0.6 * k, r * 0.36,
+        ex * 0.96 + (f.look ?? 0) * r * 0.25 * (f.uneven && s > 0 ? -1 : 1), y + (f.lookY ?? 0) * r * 0.3, ez + r * 0.3);
+      part(head, GEO.sph, B(0xffffff), r * 0.15, r * 0.15, r * 0.1, ex + r * 0.2, y + r * 0.26, ez + r * 0.5);
     } else {
-      part(head, GEO.sph, M(skinDark, 0.65), r * 1.18 * k, r * 1.24 * k, r * 0.56 * k, s * sep, y, z - 0.012);
-      part(head, GEO.box, M(skinShadow, 0.65), r * 1.9 * k, r * 0.24 * k, r * 0.52 * k, s * sep, y + r * 0.88 * k, z + 0.006, 0, 0, -s * 0.06);
-      part(head, GEO.sph, B(f.sclera ?? 0xf7f3e6), r * k, r * 1.12 * k, r * 0.62 * k, s * sep, y, z);
-      part(head, GEO.sph, B(f.pupil ?? 0x16110d), r * 0.56 * k, r * 0.64 * k, r * 0.4 * k,
-        s * sep * 0.94 + (f.look ?? 0) * r * 0.25 * (f.uneven && s > 0 ? -1 : 1), y + (f.lookY ?? 0) * r * 0.3, z + r * 0.5 * k);
-      part(head, GEO.sph, B(0xffffff), r * 0.19 * k, r * 0.19 * k, r * 0.12 * k, s * sep * 0.94 + r * 0.16, y + r * 0.3, z + r * 0.85 * k);
-      part(head, GEO.sph, B(0xe8f4ff), r * 0.1 * k, r * 0.1 * k, r * 0.08 * k, s * sep * 0.94 - r * 0.14, y - r * 0.2, z + r * 0.82 * k);
-      part(head, GEO.sph, M(light(skin, 0.12), 0.56), r * 0.92, r * 0.56, r * 0.44, s * (sep + 0.035), y - 0.068, z - 0.014);
+      part(head, GEO.sph, B(f.pupil ?? 0x1d1611), r * 0.62 * k, r * 0.86 * k, r * 0.34, ex, y, ez);
+      part(head, GEO.sph, B(0xffffff), r * 0.2 * k, r * 0.24 * k, r * 0.12, ex + r * 0.2, y + r * 0.36, ez + r * 0.26);
+      part(head, GEO.sph, B(0xdfe9f5), r * 0.1, r * 0.1, r * 0.08, ex - r * 0.18, y - r * 0.34, ez + r * 0.26);
     }
     if (f.brow !== undefined || !f.socket) {
-      part(head, GEO.box, B(f.browColor ?? 0x2a1d12), r * 2.25, r * 0.34, r * 0.54, s * sep, y + r * 1.55, z + 0.015, 0, 0, s * (f.brow ?? 0));
+      const by = y + r * (beast ? 1.35 : 1.5) * k;
+      part(head, GEO.pillX, B(f.browColor ?? 0x2a1d12), r * 1.7, r * 0.3, r * 0.4, ex, by + Math.abs(f.brow ?? 0) * r * 0.5, z + 0.012, 0, s * 0.18, s * (f.brow ?? 0) * 1.15);
     }
   }
   const mouth = f.mouth ?? "smile";
   if (mouth === "smile") {
-    part(head, GEO.box, B(0x3a1c14), 0.1, 0.02, 0.03, 0, -0.118, 0.236);
-    for (const s of [-1, 1]) part(head, GEO.box, B(0x3a1c14), 0.04, 0.02, 0.03, s * 0.058, -0.103, 0.233, 0, 0, -s * 0.7);
-    part(head, GEO.box, M(skinDark, 0.65), 0.075, 0.016, 0.024, 0, -0.138, 0.232);
+    part(head, GEO.pillX, B(lip), 0.07, 0.016, 0.02, 0, -0.118, 0.244);
+    for (const s of [-1, 1]) part(head, GEO.pillX, B(lip), 0.034, 0.016, 0.02, s * 0.044, -0.109, 0.238, 0, s * 0.3, s * 0.6);
   } else if (mouth === "flat") {
-    part(head, GEO.box, B(0x3a1c14), 0.11, 0.02, 0.03, 0, -0.12, 0.236);
-    part(head, GEO.box, M(skinDark, 0.65), 0.09, 0.018, 0.025, 0, -0.138, 0.232);
+    part(head, GEO.pillX, B(lip), 0.078, 0.016, 0.02, 0, -0.118, 0.243);
   } else if (mouth === "open") {
-    part(head, GEO.box, B(0x2a0e0c), 0.12, 0.075, 0.03, 0, -0.125, 0.235);
-    part(head, GEO.box, B(0xe9e3cf), 0.1, 0.022, 0.03, 0, -0.098, 0.241);
-    part(head, GEO.box, B(0xe9e3cf), 0.09, 0.018, 0.03, 0, -0.15, 0.239);
+    part(head, GEO.sph, B(0x2a0e0c), 0.058, 0.044, 0.02, 0, -0.124, 0.238);
+    part(head, GEO.pillX, B(0xf1ecd9), 0.074, 0.02, 0.02, 0, -0.104, 0.244);
+    part(head, GEO.sph, B(0xc0554a), 0.034, 0.018, 0.016, 0, -0.142, 0.238);
   } else if (mouth === "grin") {
-    part(head, GEO.box, B(0x2a0e0c), 0.17, 0.07, 0.03, 0, -0.118, 0.234);
-    part(head, GEO.box, B(0xf3eedc), 0.15, 0.028, 0.03, 0, -0.105, 0.242);
-    part(head, GEO.box, B(0xf3eedc), 0.13, 0.022, 0.03, 0, -0.138, 0.24);
+    part(head, GEO.sph, B(0x2a0e0c), 0.086, 0.044, 0.02, 0, -0.118, 0.236);
+    part(head, GEO.pillX, B(0xf5f0df), 0.14, 0.03, 0.02, 0, -0.112, 0.243);
   }
   if (!f.socket) {
-    part(head, GEO.box, M(skin, 0.58), 0.04, 0.076, 0.05, 0, -0.018, 0.248, -0.22, 0, 0);
-    part(head, GEO.sph, M(skin, 0.6), 0.044, 0.038, 0.044, 0, -0.048, 0.26);
-    for (const s of [-1, 1]) part(head, GEO.sph, M(skinDark, 0.62), 0.022, 0.02, 0.022, s * 0.022, -0.052, 0.254);
+    part(head, GEO.sph, M(light(skin, 0.06), 0.6), 0.036, 0.034, 0.036, 0, -0.04, 0.258);
   } else part(head, GEO.cone, B(0x0b0907), 0.036, 0.074, 0.032, 0, -0.058, 0.252, PI, 0, 0);
 }
 
@@ -169,7 +186,7 @@ function lookOf(kind: HumanKind, tc: number, tcd: number): Look {
     case "pirate": return { ...base, skin: 0xd19a6a, armor: 0x4a3a52, pants: 0x2e2734, boot: 0x241d22, chest: 0.72, scale: 1.02, head: 1.26, legs: 1.0, tilt: 0.07 };
     case "sapper": return { ...base, skin: 0xd8a070, armor: 0x7a3a26, pants: 0x3a3326, boot: 0x1f1a12, chest: 0.74, scale: 0.98, head: 1.34, legs: 1.0, tilt: 0.16 };
     case "necromancer": return { ...base, skin: 0xb9c4a8, armor: 0x2c2238, pants: 0x1c1626, boot: 0x120e18, chest: 0.6, scale: 1.08, head: 1.22, tilt: 0.1 };
-    case "zeus": return { ...base, skin: 0xe9c9a0, armor: 0xf2ead4, pants: 0xf2ead4, boot: 0xc2a45c, chest: 0.98, scale: 1.3, head: 1.14, legs: 1.12, tilt: 0.0 };
+    case "zeus": return { ...base, skin: 0xe2b88c, armor: 0xe4dcc6, pants: 0xe4dcc6, boot: 0xc2a45c, chest: 0.98, scale: 1.3, head: 1.14, legs: 1.12, tilt: 0.0 };
     case "hoplite": return { ...base, skin: 0xd9a676, armor: 0xb8873a, pants: 0x6a2f24, boot: 0x6b4a2a, chest: 0.84, scale: 1.08, head: 1.22, legs: 0.96, tilt: 0.03 };
     case "samurai": return { ...base, skin: 0xe8c39a, armor: 0x2a2228, pants: 0x23262e, boot: 0x17181d, chest: 0.8, scale: 1.08, head: 1.22, legs: 0.98, tilt: 0.05 };
     case "ninja": return { ...base, skin: 0xe2bd96, armor: 0x1d2028, pants: 0x16181e, boot: 0x101116, chest: 0.6, scale: 0.94, head: 1.26, legs: 1.02, tilt: 0.18 };
@@ -218,18 +235,22 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
     }
     const th = kind === "orc" || kind === "troll" || kind === "giant" ? 0.28 : 0.24;
     const shinM = armored ? (kind === "paladin" ? steel(0xd8dbe2) : kind === "king" || kind === "zeus" ? gold(L.boot) : steel(STEEL_DARK)) : M(L.pants, 0.8);
-    part(p, GEO.box, M(L.pants, 0.82), th, 0.46 * L.legs, th * 1.12, 0, -0.23 * L.legs, 0);
-    low(GEO.box, shinM, th * 0.9, 0.42 * L.legs, th * 1.02, 0, -0.67 * L.legs, -0.01);
+    part(p, GEO.limb, M(L.pants, 0.82), th * 1.2, 0.5 * L.legs, th * 1.3, 0, -0.22 * L.legs, 0);
+    low(GEO.limb, shinM, th * 1.04, 0.44 * L.legs, th * 1.12, 0, -0.66 * L.legs, -0.01);
     const kneeM = armored ? (kind === "paladin" || kind === "king" || kind === "zeus" ? gold() : steel(STEEL_LIGHT)) : leather(0x3d2d1d);
-    low(GEO.sph, kneeM, th * 0.56, 0.11, th * 0.62, 0, -0.45 * L.legs, th * 0.42);
-    low(GEO.box, kneeM, th * 1.08, 0.09, th * 1.16, 0, -0.45 * L.legs, 0.01);
+    if (armored) {
+      low(GEO.sph, kneeM, th * 0.52, 0.1, th * 0.56, 0, -0.45 * L.legs, th * 0.4);
+      low(GEO.pillY, kneeM, th * 1.14, 0.08, th * 1.2, 0, -0.45 * L.legs, 0.0);
+    } else {
+      low(GEO.sph, M(dark(L.pants, 0.82), 0.8), th * 0.42, 0.085, th * 0.44, 0, -0.45 * L.legs, th * 0.36);
+    }
     // A ball joint fills the gap that opens behind a bent knee.
     part(p, GEO.sph, M(L.pants, 0.82), th * 0.5, th * 0.5, th * 0.54, 0, -0.45 * L.legs, 0);
     if (armored) low(GEO.box, kneeM, 0.035, 0.14, 0.12, side * th * 0.56, -0.45 * L.legs, 0.04);
-    low(GEO.box, leather(LEATHER_DARK), th * 0.98, 0.09, th * 1.08, 0, -0.82 * L.legs, 0);
-    low(GEO.box, armored ? shinM : leather(L.boot), th * 1.06, 0.16, th * 1.5, 0, -0.92 * L.legs, 0.05);
-    low(GEO.sph, armored ? shinM : leather(L.boot), th * 0.5, 0.08, th * 0.55, 0, -0.93 * L.legs, 0.18);
-    low(GEO.box, M(0x18130e, 0.9), th * 1.08, 0.045, th * 1.56, 0, -0.99 * L.legs, 0.05);
+    const bootM = armored ? shinM : leather(L.boot);
+    low(GEO.pillY, bootM, th * 1.12, 0.26, th * 1.16, 0, -0.84 * L.legs, 0);
+    low(GEO.softer, bootM, th * 1.16, 0.19, th * 1.9, 0, -0.915 * L.legs, 0.07);
+    low(GEO.bevel, M(0x18130e, 0.9), th * 1.1, 0.04, th * 1.74, 0, -0.995 * L.legs, 0.07);
     if (kind === "orc" || kind === "giant" || kind === "berserker" || kind === "troll") part(p, GEO.box, M(0x4a3a28), th * 1.18, 0.11, th * 1.26, 0, -0.3 * L.legs, 0);
     if (kind === "zombie" && side < 0) low(GEO.box, boneMat(), 0.085, 0.16, 0.085, 0, -0.58 * L.legs, 0.09);
     return p;
@@ -262,7 +283,7 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   } else if (kind === "mage" || kind === "frost" || kind === "necromancer") {
     const robe = kind === "frost" ? 0x4f7fbf : kind === "necromancer" ? 0x2c2238 : tc;
     part(torso, GEO.box, M(robe), cw, 0.8, cw * 0.62, 0, 0.42, 0);
-    part(torso, GEO.cone, M(robe), 0.62, 1.7, 0.62, 0, -0.2, 0);
+    part(torso, GEO.robe, M(robe), 0.62, 1.7, 0.62, 0, -0.2, 0);
     part(torso, GEO.ring, steel(GOLD), 0.62, 0.62, 0.62, 0, -1.04, 0, PI / 2, 0, 0);
     part(torso, GEO.box, M(GOLD, 0.4, 0.5), 0.1, 0.84, 0.05, 0, 0.0, cw * 0.32 + 0.02);
     part(torso, GEO.box, M(kind === "frost" ? 0xbfe4ff : 0xd9c08a), cw * 1.02, 0.12, cw * 0.66, 0, 0.1, 0);
@@ -271,7 +292,7 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   } else if (kind === "cleric" || kind === "monk" || kind === "shaman" || kind === "fanbearer") {
     const robe = kind === "cleric" ? 0xf0ead8 : kind === "monk" ? 0xc8a058 : kind === "fanbearer" ? 0xe9e2cc : 0x6a5a3a;
     part(torso, GEO.box, M(robe), cw, 0.8, cw * 0.62, 0, 0.42, 0);
-    part(torso, GEO.cone, M(robe), 0.66, 1.7, 0.66, 0, -0.2, 0);
+    part(torso, GEO.robe, M(robe), 0.66, 1.7, 0.66, 0, -0.2, 0);
     part(torso, GEO.ring, steel(kind === "monk" ? 0x8a6a2a : GOLD), 0.66, 0.66, 0.66, 0, -1.04, 0, PI / 2, 0, 0);
     part(torso, GEO.box, M(tc), 0.2, 1.6, 0.04, 0, -0.1, cw * 0.32 + 0.05);
     if (kind === "shaman") {
@@ -472,9 +493,9 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
     cloak = new THREE.Group();
     cloak.position.set(0, 0.8, -cw * 0.34);
     torso.add(cloak);
-    part(cloak, GEO.box, M(cc[0]), cw * cc[1], cc[2], 0.05, 0, -cc[2] * 0.5, 0);
-    for (const s of [-1, 1]) part(cloak, GEO.box, cloth(dark(cc[0], 0.82)), cw * cc[1] * 0.22, cc[2] * 0.96, 0.052, s * cw * cc[1] * 0.38, -cc[2] * 0.49, -0.015, 0, s * 0.14, -s * 0.04);
-    part(cloak, GEO.box, cloth(kind === "king" || kind === "paladin" || kind === "zeus" || kind === "cleric" || kind === "mage" ? GOLD : tc), cw * cc[1] * 1.02, 0.065, 0.056, 0, -cc[2] + 0.04, 0);
+    part(cloak, GEO.cape, M(cc[0]), cw * cc[1] * 1.12, cc[2], 0.05, 0, -cc[2] * 0.5, -0.05);
+    // Trim: a second, slightly larger sheet peeking out below the hem.
+    part(cloak, GEO.cape, cloth(kind === "king" || kind === "paladin" || kind === "zeus" || kind === "cleric" || kind === "mage" ? GOLD : dark(cc[0], 0.7)), cw * cc[1] * 1.15, cc[2] * 1.03, 0.05, 0, -cc[2] * 0.515, -0.035);
     if (kind === "vampire") part(cloak, GEO.box, M(cc[0]), cw * 0.24, cc[2] * 0.85, 0.04, 0.0, -cc[2] * 1.0, -0.06);
   }
   if (kind === "valkyrie") {
@@ -498,10 +519,14 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   head.position.set(0, 1.1, 0);
   head.scale.setScalar(L.head);
   torso.add(head);
-  part(head, GEO.sph, M(L.skin, 0.6), 0.26, 0.28, 0.26);
+  part(head, GEO.head, M(L.skin, 0.6), 0.262, 0.275, 0.262);
   if (!skel) {
-    part(head, GEO.box, M(L.skin, 0.58), 0.28, 0.14, 0.24, 0, -0.14, 0.04);
-    for (const s of [-1, 1]) part(head, GEO.sph, M(L.skin, 0.6), 0.05, 0.07, 0.04, s * 0.255, -0.01, 0.0);
+    // Soft cheeks and jaw give the head a readable shape from any angle.
+    part(head, GEO.softer, M(L.skin, 0.6), 0.47, 0.25, 0.44, 0, -0.105, 0.025);
+    for (const s of [-1, 1]) {
+      part(head, GEO.sph, M(L.skin, 0.6), 0.045, 0.07, 0.05, s * 0.258, -0.02, -0.01);
+      part(head, GEO.sph, M(dark(L.skin, 0.8), 0.6), 0.022, 0.04, 0.03, s * 0.275, -0.02, 0.0);
+    }
   }
   let headExtra = 0;
   const dome = (c: number, r: number, y: number, metal = false, sy = 0.9) =>
@@ -678,7 +703,6 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
       part(head, GEO.box, M(tc), 0.1, 0.05, 0.3, 0.2, 0.06, -0.3, 0.3, 0.4, 0);
       part(head, GEO.cyl, M(0xd8c090), 0.012, 0.2, 0.012, 0.3, 0.1, 0.02, 0.3, 0, 0);
       part(head, GEO.sph, B(0xffa040), 0.035, 0.035, 0.035, 0.3, 0.2, 0.05);
-      part(head, GEO.box, B(0x2a2420), 0.2, 0.07, 0.02, 0.06, -0.02, 0.255);
       addFace(head, L.skin, { brow: 0.25, mouth: "grin", uneven: true, sclera: 0xfaf3d8 });
       teeth();
       break;
@@ -862,16 +886,27 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
       ? 0x8b93a1
       : kind === "archer" || kind === "crossbow" || kind === "javelin" || kind === "bonearcher" ? 0x4a3826
       : bareArms ? L.skin : L.armor;
-    part(a, GEO.sph, skel ? boneMat(L.skin) : M(sleeveC), t * 0.62, t * 0.62, t * 0.62, 0, -0.02, 0);
-    part(a, GEO.box, M(sleeveC), t, 0.42, t * 1.1, 0, -0.19, 0);
-    part(a, GEO.sph, armored ? steel(STEEL_LIGHT) : M(foreC), t * 0.56, t * 0.52, t * 0.6, 0, -0.38, -0.01);
-    part(a, GEO.box, M(foreC), t * 0.88, 0.36, t * 0.98, 0, -0.5, 0);
+    if (skel) {
+      part(a, GEO.sph, boneMat(L.skin), t * 0.62, t * 0.62, t * 0.62, 0, -0.02, 0);
+      part(a, GEO.box, M(sleeveC), t, 0.42, t * 1.1, 0, -0.19, 0);
+      part(a, GEO.sph, M(foreC), t * 0.56, t * 0.52, t * 0.6, 0, -0.38, -0.01);
+      part(a, GEO.box, M(foreC), t * 0.88, 0.36, t * 0.98, 0, -0.5, 0);
+    } else {
+      // Shoulder cap, a tapered upper arm and a forearm that swells into a cuff at the wrist.
+      part(a, GEO.sph, M(sleeveC), t * 0.66, t * 0.62, t * 0.68, 0, -0.01, 0);
+      part(a, GEO.limb, M(sleeveC), t * 1.16, 0.44, t * 1.22, 0, -0.2, 0);
+      part(a, GEO.sph, armored ? steel(STEEL_LIGHT) : M(foreC), t * 0.5, t * 0.48, t * 0.54, 0, -0.39, -0.01);
+      part(a, GEO.limb, M(foreC), t * 1.06, 0.34, t * 1.12, 0, -0.51, 0, PI, 0, 0);
+      part(a, GEO.pillY, armored ? steel(STEEL_DARK) : M(dark(foreC, 0.8)), t * 1.16, 0.09, t * 1.2, 0, -0.63, 0);
+    }
     if (kind === "mage" || kind === "cleric" || kind === "frost" || kind === "shaman" || kind === "fanbearer") part(a, GEO.cone, M(kind === "mage" ? tc : L.armor), kind === "fanbearer" ? 0.26 : 0.2, kind === "fanbearer" ? 0.5 : 0.4, 0.2, 0, -0.5, 0, PI, 0, 0);
     if (kind === "samurai") { part(a, GEO.box, M(0x2a2228, 0.4, 0.35), t * 1.05, 0.3, t * 1.1, 0, -0.5, 0); part(a, GEO.box, M(tc), t * 1.08, 0.03, t * 1.12, 0, -0.42, 0); }
     if (kind === "valkyrie" || kind === "hoplite") part(a, GEO.box, kind === "hoplite" ? gold(0xb8873a) : steel(0xcfd6e2), t * 0.98, 0.26, t * 1.06, 0, -0.52, 0);
     if (bareArms) part(a, GEO.box, M(0x4a3a28), t * 1.1, 0.1, t * 1.1, 0, -0.52, 0);
-    part(a, GEO.sph, M(L.skin), 0.095, 0.095, 0.095, 0, -0.72, 0);
-    for (const f of [-0.036, 0, 0.036]) part(a, GEO.box, armored ? steel(STEEL_DARK) : M(L.skin), 0.032, 0.06, 0.045, f, -0.77, 0.03, 0.2, 0, 0);
+    // Mitten hand with a thumb: big enough to read at battlefield distance.
+    const handM = skel ? boneMat(L.skin) : armored ? steel(STEEL_DARK) : M(L.skin, 0.6);
+    part(a, GEO.softer, handM, skel ? 0.15 : 0.2, skel ? 0.17 : 0.22, skel ? 0.16 : 0.22, 0, -0.74, 0.01);
+    part(a, GEO.sph, handM, 0.045, 0.06, 0.05, -side * 0.085, -0.73, 0.05);
     return a;
   };
   const lArm = mkArm(1), rArm = mkArm(-1);
@@ -1909,12 +1944,23 @@ function buildKnight(team: TeamId): UnitRig {
 const MAT_STD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.05 });
 const MAT_METAL = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.78 });
 const MAT_BASIC = new THREE.MeshBasicMaterial({ vertexColors: true });
+// Cool rim light on every unit: separates silhouettes from the ground and from each other.
+for (const [mat, gain] of [[MAT_STD, 0.5], [MAT_METAL, 0.3]] as const) {
+  mat.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <opaque_fragment>",
+      `float rimLight = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.2);
+      outgoingLight += (diffuseColor.rgb * 0.6 + vec3(0.2, 0.26, 0.36)) * rimLight * ${gain.toFixed(2)};
+      #include <opaque_fragment>`,
+    );
+  };
+}
 
 /** Gives every unit a shared reflection probe. Metal mirrors it; cloth and skin only pick up a soft fill. */
 export function getRigEnvironment() { return MAT_METAL.envMap; }
 export function setRigEnvironment(env: THREE.Texture | null) {
   MAT_STD.envMap = env; MAT_STD.envMapIntensity = 0.3;
-  MAT_METAL.envMap = env; MAT_METAL.envMapIntensity = 0.62;
+  MAT_METAL.envMap = env; MAT_METAL.envMapIntensity = 0.5;
   MAT_STD.needsUpdate = MAT_METAL.needsUpdate = true;
 }
 const CLASS_MAT: THREE.Material[] = [MAT_STD, MAT_METAL, MAT_BASIC];
@@ -1955,7 +2001,7 @@ function bake(template: UnitRig): Baked {
           const nx = norm ? norm.getX(i) : 0, ny = norm ? norm.getY(i) : 0, nz = norm ? norm.getZ(i) : 0;
           const h = (pos.getY(i) - minY) / spanY - 0.5;
           const key = ny * 0.11 + nz * 0.055 + Math.abs(nx) * 0.025;
-          shade = cls === 1 ? 1 + key * 1.15 + h * 0.09 : 1 + key * 0.82 + h * 0.065;
+          shade = cls === 1 ? 1 + key * 1.15 + h * 0.12 : 1 + key * 0.82 + h * 0.14;
           shade = Math.max(0.7, Math.min(1.2, shade));
         }
         colors[i * 3] = Math.min(1, mat.color.r * shade);
