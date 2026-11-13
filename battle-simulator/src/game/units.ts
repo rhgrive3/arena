@@ -418,6 +418,45 @@ function capeSheet(): THREE.BufferGeometry {
   return g;
 }
 
+/**
+ * Sword blade along +Z filling the unit cube: a diamond cross-section with a central ridge,
+ * drawn out to a point over its last quarter. Flat-shaded so each bevel catches the light separately.
+ */
+function bladeZ(): THREE.BufferGeometry {
+  const ring = (z: number, k: number) => [[0.5 * k, 0, z], [0, 0.5 * k, z], [-0.5 * k, 0, z], [0, -0.5 * k, z]];
+  const a = ring(-0.5, 0.92), b = ring(0.24, 1), tip = [0, 0, 0.5], butt = [0, 0, -0.5];
+  const tris: number[][] = [];
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    tris.push(a[i], a[j], b[j], a[i], b[j], b[i], b[i], b[j], tip, a[j], a[i], butt);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(tris.flat(), 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Array(tris.length * 2).fill(0), 2));
+  g.computeVertexNormals();
+  // Indexed like every other primitive so it can be merged into a baked bone.
+  g.setIndex(tris.map((_, i) => i));
+  return g;
+}
+
+/** One continuous head: a skull that carries its width down through the cheeks into a firm, slightly flattened jaw. */
+function headForm(): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(1, 20, 16);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    if (y < 0) {
+      const t = -y;
+      const cheek = 1 + 0.2 * Math.sin(Math.min(1, t * 1.15) * Math.PI) + 0.1 * t;
+      x *= cheek; z *= 1 + (cheek - 1) * (z > 0 ? 0.75 : 0.45);
+      y *= 0.94;
+    }
+    pos.setXYZ(i, x, y, z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
 /** Bell-shaped robe skirt with the footprint of a unit cone (radius 1, height 1): narrow waist, flared hem. */
 function robeSkirt(): THREE.BufferGeometry {
   const pts: THREE.Vector2[] = [];
@@ -439,9 +478,10 @@ export const GEO = {
   pillY: softBlock(5, 1, 8, 6),
   pillZ: softBlock(5, 2, 8, 6),
   limb: limbSegment(0.72),
-  head: new THREE.SphereGeometry(1, 18, 14),
+  head: headForm(),
   robe: robeSkirt(),
   cape: capeSheet(),
+  blade: bladeZ(),
   sph: new THREE.SphereGeometry(1, 12, 9),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 10),
   cone: new THREE.ConeGeometry(1, 1, 10),

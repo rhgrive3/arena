@@ -16,7 +16,8 @@ import { STAGES } from "../src/game/campaign";
 import { EffectLayer } from "../src/game/effects";
 import { AudioFX, type SfxName } from "../src/game/audio";
 
-const instanced = (scene: THREE.Scene) => scene.children.filter((o): o is THREE.InstancedMesh => o instanceof THREE.InstancedMesh);
+// Unit meshes only: ink outlines reuse the same instance matrices and are counted separately.
+const instanced = (scene: THREE.Scene) => scene.children.filter((o): o is THREE.InstancedMesh => o instanceof THREE.InstancedMesh && (o.material as THREE.Material).side !== THREE.BackSide);
 const total = (scene: THREE.Scene) => instanced(scene).reduce((n, m) => n + m.count, 0);
 
 test("every unit type bakes into a handful of bone parts with vertex colors", () => {

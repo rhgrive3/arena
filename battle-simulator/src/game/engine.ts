@@ -706,6 +706,7 @@ export class Engine {
   private setQuality(q: "standard" | "low") {
     this.quality = q;
     this.renderer.shadowMap.enabled = q === "standard";
+    this.unitRenderer.setOutlines(q === "standard");
     this.scene.traverse(object => {
       if (object instanceof THREE.Mesh) {
         const materials = Array.isArray(object.material) ? object.material : [object.material];
@@ -930,7 +931,8 @@ export class Engine {
     let hX = rig.handMode === "fixed" ? rig.handRest - rX : rig.handRest;
     let hZ = 0;
     let tX = rig.tilt + move * (knight ? 0.12 : 0.1);
-    let tY = knight ? 0 : -sw * 0.1 * move;
+    // At rest a fighter stands bladed to the enemy, weapon side back, rather than square-on.
+    let tY = knight ? 0 : -sw * 0.1 * move - 0.16 * (1 - move);
     let lunge = 0;
     let hUp = 0;
     let crouch = 0;

@@ -83,7 +83,13 @@ function part(
   parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material,
   sx: number, sy: number, sz: number, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0,
 ): THREE.Mesh {
-  if (geo === GEO.box) geo = sculpt(sx, sy, sz);
+  if (geo === GEO.box) {
+    // Long flat bars of steel are blades: give them a ridge and a point instead of a slab.
+    const metal = (mat as THREE.MeshStandardMaterial).metalness > 0.5;
+    const wide = Math.max(sx, sy), thin = Math.min(sx, sy);
+    if (metal && sz >= wide * 3.2 && thin <= wide * 0.6 && sz >= 0.45) { geo = GEO.blade; if (sx < sy) sx *= 1.5; else sy *= 1.5; }
+    else geo = sculpt(sx, sy, sz);
+  }
   const m = new THREE.Mesh(geo, mat);
   m.scale.set(sx, sy, sz);
   m.position.set(x, y, z);
@@ -103,50 +109,60 @@ interface Face {
 }
 
 function addFace(head: THREE.Group, skin: number, f: Face = {}) {
-  const sep = f.sep ?? 0.105, y = f.y ?? 0.03, z = f.z ?? 0.222, r = f.size ?? 0.064;
-  const skinDark = dark(skin, 0.74);
-  const lip = dark(skin, 0.5);
-  // Monsters keep a coloured eyeball; everyone else gets clean, dark, glossy eyes.
-  const beast = f.sclera !== undefined;
+  // The face sits low on the head so brows stay clear of helmet rims and hat brims.
+  const sep = f.sep ?? 0.105, y = (f.y ?? 0.03) - 0.04, z = f.z ?? 0.222, r = f.size ?? 0.064;
+  const lip = dark(skin, 0.46);
+  // Yellowed eyeballs mark a monster and get slit pupils; pale ones are simply a person's eye colour.
+  const beast = f.sclera !== undefined && (f.sclera & 0xff) < 0xc8;
+  const tiltB = f.brow ?? 0.14;
+  // Gentle faces (negative brow: healers, elves) keep open eyes; everyone else narrows theirs.
+  const stern = tiltB >= 0;
+  const slant = stern ? Math.max(0.16, Math.min(0.42, tiltB * 0.9 + 0.08)) : -0.05;
   for (const s of [-1, 1]) {
-    const k = f.uneven && s > 0 ? 1.35 : 1;
+    const k = f.uneven && s > 0 ? 1.3 : 1;
     const ex = s * sep, ez = z + 0.012;
+    // Positive roll lifts the outer corner: eyes and brows sweep up and away from the nose.
+    const roll = s * slant;
     if (f.socket) {
       part(head, GEO.sph, B(0x0b0907), r * 1.5, r * 1.7, r * 0.8, ex, y, z);
       part(head, GEO.sph, B(f.pupil ?? 0x7fe8ff), r * 0.52, r * 0.52, r * 0.4, ex, y - 0.005, z + r * 0.44);
       part(head, GEO.sph, B(0xffffff), r * 0.18, r * 0.18, r * 0.12, ex + r * 0.12, y + r * 0.12, z + r * 0.7);
-    } else if (beast) {
-      part(head, GEO.sph, M(skinDark, 0.7), r * 1.22 * k, r * 1.02 * k, r * 0.5, ex, y, ez - 0.016);
-      part(head, GEO.sph, B(f.sclera!), r * 1.0 * k, r * 0.8 * k, r * 0.5, ex, y, ez);
-      part(head, GEO.sph, B(f.pupil ?? 0x16110d), r * 0.46 * k, r * 0.6 * k, r * 0.36,
-        ex * 0.96 + (f.look ?? 0) * r * 0.25 * (f.uneven && s > 0 ? -1 : 1), y + (f.lookY ?? 0) * r * 0.3, ez + r * 0.3);
-      part(head, GEO.sph, B(0xffffff), r * 0.15, r * 0.15, r * 0.1, ex + r * 0.2, y + r * 0.26, ez + r * 0.5);
     } else {
-      part(head, GEO.sph, B(f.pupil ?? 0x1d1611), r * 0.62 * k, r * 0.86 * k, r * 0.34, ex, y, ez);
-      part(head, GEO.sph, B(0xffffff), r * 0.2 * k, r * 0.24 * k, r * 0.12, ex + r * 0.2, y + r * 0.36, ez + r * 0.26);
-      part(head, GEO.sph, B(0xdfe9f5), r * 0.1, r * 0.1, r * 0.08, ex - r * 0.18, y - r * 0.34, ez + r * 0.26);
+      // Almond eye: eyeball, iris and pupil, one catch-light, and a dark upper lid that gives it its shape.
+      const open = stern ? 0.6 : 0.8;
+      part(head, GEO.sph, B(f.sclera ?? 0xf6f3ea), r * 1.08 * k, r * open * k, r * 0.36, ex, y, ez, 0, s * 0.2, roll);
+      const px = ex * 0.96 + (f.look ?? 0) * r * 0.25 * (f.uneven && s > 0 ? -1 : 1), py = y + (f.lookY ?? 0) * r * 0.3 + r * 0.04;
+      if (beast) part(head, GEO.sph, B(f.pupil ?? 0x16110d), r * 0.26 * k, r * open * 0.9 * k, r * 0.3, px, py, ez + r * 0.16);
+      else {
+        part(head, GEO.sph, B(f.pupil ?? 0x3a2616), r * 0.56 * k, r * open * 0.96 * k, r * 0.3, px, py, ez + r * 0.14);
+        part(head, GEO.sph, B(0x0a0806), r * 0.3 * k, r * open * 0.56 * k, r * 0.26, px, py, ez + r * 0.22);
+      }
+      part(head, GEO.sph, B(0xffffff), r * 0.14, r * 0.14, r * 0.1, px + r * 0.22, py + r * open * 0.28, ez + r * 0.36);
+      part(head, GEO.pillX, B(0x120d0a), r * 2.3 * k, r * 0.24, r * 0.3, ex, y + r * open * 0.82 * k, ez + r * 0.12, 0, s * 0.2, roll);
     }
     if (f.brow !== undefined || !f.socket) {
-      const by = y + r * (beast ? 1.35 : 1.5) * k;
-      part(head, GEO.pillX, B(f.browColor ?? 0x2a1d12), r * 1.7, r * 0.3, r * 0.4, ex, by + Math.abs(f.brow ?? 0) * r * 0.5, z + 0.012, 0, s * 0.18, s * (f.brow ?? 0) * 1.15);
+      part(head, GEO.pillX, B(f.browColor ?? 0x2a1d12), r * 2.3, r * (stern ? 0.5 : 0.3), r * 0.5,
+        ex * 1.04, y + r * (stern ? 1.3 : 1.65), z + 0.026, 0, s * 0.22, stern ? s * (slant + 0.16) : -s * tiltB * 1.15);
     }
   }
-  const mouth = f.mouth ?? "smile";
+  const mouth = f.mouth ?? "flat";
   if (mouth === "smile") {
-    part(head, GEO.pillX, B(lip), 0.07, 0.016, 0.02, 0, -0.118, 0.244);
-    for (const s of [-1, 1]) part(head, GEO.pillX, B(lip), 0.034, 0.016, 0.02, s * 0.044, -0.109, 0.238, 0, s * 0.3, s * 0.6);
+    // A confident half-smile rather than a grin.
+    part(head, GEO.pillX, B(lip), 0.074, 0.017, 0.02, -0.004, -0.152, 0.268, 0, 0, 0.06);
+    part(head, GEO.pillX, B(lip), 0.03, 0.017, 0.02, 0.044, -0.144, 0.263, 0, 0.3, 0.55);
   } else if (mouth === "flat") {
-    part(head, GEO.pillX, B(lip), 0.078, 0.016, 0.02, 0, -0.118, 0.243);
+    part(head, GEO.pillX, B(lip), 0.082, 0.018, 0.02, 0, -0.154, 0.268);
+    for (const s of [-1, 1]) part(head, GEO.pillX, B(lip), 0.024, 0.016, 0.02, s * 0.046, -0.159, 0.262, 0, s * 0.3, -s * 0.5);
   } else if (mouth === "open") {
-    part(head, GEO.sph, B(0x2a0e0c), 0.058, 0.044, 0.02, 0, -0.124, 0.238);
-    part(head, GEO.pillX, B(0xf1ecd9), 0.074, 0.02, 0.02, 0, -0.104, 0.244);
-    part(head, GEO.sph, B(0xc0554a), 0.034, 0.018, 0.016, 0, -0.142, 0.238);
+    part(head, GEO.soft, B(0x2a0e0c), 0.12, 0.08, 0.03, 0, -0.158, 0.261);
+    part(head, GEO.pillX, B(0xf1ecd9), 0.1, 0.022, 0.02, 0, -0.134, 0.270);
+    part(head, GEO.pillX, B(0xf1ecd9), 0.086, 0.018, 0.02, 0, -0.184, 0.266);
   } else if (mouth === "grin") {
-    part(head, GEO.sph, B(0x2a0e0c), 0.086, 0.044, 0.02, 0, -0.118, 0.236);
-    part(head, GEO.pillX, B(0xf5f0df), 0.14, 0.03, 0.02, 0, -0.112, 0.243);
+    part(head, GEO.soft, B(0x2a0e0c), 0.16, 0.066, 0.03, 0, -0.152, 0.260);
+    part(head, GEO.pillX, B(0xf5f0df), 0.142, 0.03, 0.02, 0, -0.144, 0.269);
   }
   if (!f.socket) {
-    part(head, GEO.sph, M(light(skin, 0.06), 0.6), 0.036, 0.034, 0.036, 0, -0.04, 0.258);
+    part(head, GEO.softer, M(dark(skin, 0.93), 0.6), 0.06, 0.09, 0.07, 0, -0.072, 0.272, -0.28, 0, 0);
   } else part(head, GEO.cone, B(0x0b0907), 0.036, 0.074, 0.032, 0, -0.058, 0.252, PI, 0, 0);
 }
 
@@ -200,7 +216,11 @@ function lookOf(kind: HumanKind, tc: number, tcd: number): Look {
 function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   const tc = TEAM_COLORS[team], tcd = dark(tc), tcl = new THREE.Color(tc).lerp(new THREE.Color(0xffffff), 0.35).getHex();
   const L = lookOf(kind, tc, tcd);
-  const cw = L.chest, ww = cw * 0.84;
+  // Heroic proportions: a smaller head on longer legs, broad shoulders over a narrow waist.
+  const big = kind === "giant" || kind === "troll";
+  L.head *= big ? 0.94 : 0.86;
+  L.legs *= big ? 1.0 : 1.1;
+  const cw = L.chest, ww = cw * 0.74;
   const skel = kind === "skeleton" || kind === "bonearcher";
   const armored = kind === "guardian" || kind === "swordsman" || kind === "halberdier" || kind === "paladin" || kind === "king" || kind === "vampire" || kind === "zeus" || kind === "valkyrie";
   const root = new THREE.Group();
@@ -214,7 +234,9 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   const shins: THREE.Group[] = [];
   const mkLeg = (side: number) => {
     const p = new THREE.Group();
-    p.position.set(side * (0.17 + cw * 0.05), hipY, 0);
+    p.position.set(side * (0.18 + cw * 0.06), hipY, 0);
+    // A planted, slightly spread stance; the walk cycle only drives rotation.x.
+    p.rotation.z = side * 0.075;
     body.add(p);
     // The shin group pivots at the knee; its parts are authored in hip space and shifted down to it.
     const shin = new THREE.Group();
@@ -521,8 +543,6 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   torso.add(head);
   part(head, GEO.head, M(L.skin, 0.6), 0.262, 0.275, 0.262);
   if (!skel) {
-    // Soft cheeks and jaw give the head a readable shape from any angle.
-    part(head, GEO.softer, M(L.skin, 0.6), 0.47, 0.25, 0.44, 0, -0.105, 0.025);
     for (const s of [-1, 1]) {
       part(head, GEO.sph, M(L.skin, 0.6), 0.045, 0.07, 0.05, s * 0.258, -0.02, -0.01);
       part(head, GEO.sph, M(dark(L.skin, 0.8), 0.6), 0.022, 0.04, 0.03, s * 0.275, -0.02, 0.0);
@@ -619,10 +639,11 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
     case "bomber":
       dome(tc, 0.285, 0.07);
       part(head, GEO.cone, M(tc), 0.1, 0.22, 0.1, 0, 0.02, -0.3, -1.9, 0, 0);
-      part(head, GEO.box, M(0x2a2016), 0.22, 0.03, 0.04, 0, -0.06, 0.255);
+      // goggles pushed up onto the brow of the cap
       for (const s of [-1, 1]) {
-        part(head, GEO.ring, steel(0xb9803a), 0.095, 0.095, 0.1, s * 0.105, 0.04, 0.235);
-        part(head, GEO.box, M(0x2a2016), 0.06, 0.05, 0.5, s * 0.27, 0.07, 0.0);
+        part(head, GEO.ring, steel(0xb9803a), 0.085, 0.085, 0.1, s * 0.1, 0.13, 0.24, -0.3, 0, 0);
+        part(head, GEO.sph, B(0xbfe6f2), 0.07, 0.07, 0.02, s * 0.1, 0.13, 0.245, -0.3, 0, 0);
+        part(head, GEO.box, M(0x2a2016), 0.06, 0.05, 0.5, s * 0.27, 0.11, 0.0);
       }
       addFace(head, L.skin, { brow: 0.2, mouth: "grin", sclera: 0xfaf3d8 });
       break;
@@ -716,7 +737,7 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
       headExtra = 0.5;
       break;
     case "zombie":
-      part(head, GEO.sph, M(0x4a3325), 0.19, 0.09, 0.09, 0.14, 0.06, 0.2);
+      part(head, GEO.sph, M(0x4a3325), 0.11, 0.06, 0.07, 0.15, 0.15, 0.19);
       part(head, GEO.box, M(0xe0d8c0), 0.14, 0.12, 0.05, -0.12, 0.2, 0.18, 0, 0, 0.3);
       for (let i = 0; i < 3; i++) part(head, GEO.cone, M(0x3a3224), 0.03, 0.12, 0.03, -0.08 + i * 0.08, 0.28, 0.0);
       part(head, GEO.box, M(L.skin, 0.6), 0.2, 0.05, 0.15, 0, -0.21, 0.1);
@@ -880,7 +901,7 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
     const a = new THREE.Group();
     a.position.set(side * (cw / 2 + 0.15), 0.8, 0);
     torso.add(a);
-    const t = skel ? 0.09 : 0.2;
+    const t = skel ? 0.09 : 0.225;
     const sleeveC = bareArms ? L.skin : L.armor;
     const foreC = kind === "spear" || kind === "guardian" || kind === "swordsman" || kind === "halberdier" || kind === "paladin"
       ? 0x8b93a1
@@ -893,7 +914,7 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
       part(a, GEO.box, M(foreC), t * 0.88, 0.36, t * 0.98, 0, -0.5, 0);
     } else {
       // Shoulder cap, a tapered upper arm and a forearm that swells into a cuff at the wrist.
-      part(a, GEO.sph, M(sleeveC), t * 0.66, t * 0.62, t * 0.68, 0, -0.01, 0);
+      part(a, GEO.sph, M(sleeveC), t * 0.78, t * 0.7, t * 0.8, 0, 0.0, 0);
       part(a, GEO.limb, M(sleeveC), t * 1.16, 0.44, t * 1.22, 0, -0.2, 0);
       part(a, GEO.sph, armored ? steel(STEEL_LIGHT) : M(foreC), t * 0.5, t * 0.48, t * 0.54, 0, -0.39, -0.01);
       part(a, GEO.limb, M(foreC), t * 1.06, 0.34, t * 1.12, 0, -0.51, 0, PI, 0, 0);
@@ -912,6 +933,8 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
   const lArm = mkArm(1), rArm = mkArm(-1);
   const hand = new THREE.Group();
   hand.position.set(0, -0.72, 0.04);
+  // Weapons are drawn a size up: they are what a fighter is read by from the commander's view.
+  hand.scale.setScalar(1.18);
   rArm.add(hand);
 
   let handMode: HandMode = "follow";
@@ -1253,6 +1276,7 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
     }
   }
   detailWeapons(kind, hand, lArm, rArm, tcl);
+  dressUp(kind, { torso, lArm, rArm, shins, cw, ww, legs: L.legs, tc, tcd, tcl, skin: L.skin, armor: L.armor, skel, armored });
 
   const headH = (hipY + 1.45 + 0.28 * L.head + headExtra) * L.scale;
   return {
@@ -1260,6 +1284,188 @@ function buildHumanoid(kind: HumanKind, team: TeamId): UnitRig {
     scale: L.scale, tilt: L.tilt, kind, handMode, handRest, parts: [], fx: {}, tip: new THREE.Vector3(),
     lShin: shins[0], rShin: shins[1],
   };
+}
+
+interface Wardrobe {
+  torso: THREE.Group; lArm: THREE.Group; rArm: THREE.Group; shins: THREE.Group[];
+  cw: number; ww: number; legs: number; tc: number; tcd: number; tcl: number; skin: number; armor: number;
+  skel: boolean; armored: boolean;
+}
+
+/**
+ * Clothing and gear layered over the base body. Units fall into five wardrobes
+ * (plate, field kit, robes, hides, grave rags); each adds the pieces that kind of fighter would carry.
+ */
+function dressUp(kind: HumanKind, w: Wardrobe) {
+  const { torso, lArm, rArm, shins, cw, ww, legs, tc, tcd, tcl } = w;
+  const arms = [lArm, rArm];
+  const depth = cw * 0.6;
+  const robed = kind === "mage" || kind === "frost" || kind === "necromancer" || kind === "cleric" || kind === "monk" || kind === "shaman" || kind === "fanbearer";
+  const wild = kind === "orc" || kind === "berserker" || kind === "troll" || kind === "giant";
+  const plate = w.armored || kind === "spear" || kind === "hoplite" || kind === "samurai";
+  const rich = kind === "king" || kind === "paladin" || kind === "zeus" || kind === "valkyrie" || kind === "hoplite";
+  const trimM = rich ? gold() : steel(STEEL_LIGHT);
+  const armR = 0.14, foreR = 0.135, shinR = 0.14;
+  /** Band around a limb or the waist. */
+  const band = (g: THREE.Group, mat: THREE.Material, r: number, y: number, h = 0.045, z = 0) => part(g, GEO.pillY, mat, r * 2, h, r * 2.06, 0, y, z);
+
+  if (w.skel) {
+    // Grave rags: what is left of a uniform, a rope belt and one rusted shoulder plate.
+    band(torso, leather(0x6b5a3e), ww * 0.5, 0.05, 0.05);
+    for (let i = 0; i < 4; i++) {
+      const x = (i - 1.5) * ww * 0.24;
+      part(torso, GEO.bevel, cloth(i % 2 ? tcd : dark(tcd, 0.7)), ww * 0.2, 0.3 + (i % 3) * 0.1, 0.03, x, -0.16 - (i % 3) * 0.05, cw * 0.27, 0.08, 0, (i - 1.5) * 0.06);
+      part(torso, GEO.bevel, cloth(dark(tcd, 0.7)), ww * 0.2, 0.24 + ((i + 1) % 3) * 0.08, 0.03, x, -0.13, -cw * 0.27, -0.08, 0, 0);
+    }
+    part(lArm, GEO.dome, steel(0x7a6a58), 0.15, 0.1, 0.16, 0, 0.0, 0);
+    part(lArm, GEO.ring, steel(0x5a4c3e), 0.15, 0.15, 0.16, 0, 0.0, 0, PI / 2, 0, 0);
+    for (const a of arms) band(a, leather(0x4a3a28), 0.06, -0.6, 0.05);
+    return;
+  }
+
+  if (robed) {
+    const robe = kind === "frost" ? 0x4f7fbf : kind === "necromancer" ? 0x2c2238 : kind === "cleric" ? 0xf0ead8 : kind === "monk" ? 0xc8a058 : kind === "fanbearer" ? 0xe9e2cc : kind === "shaman" ? 0x6a5a3a : tc;
+    const accent = kind === "necromancer" ? 0x8fff6a : kind === "frost" ? 0xbfe8ff : kind === "shaman" ? 0xe8e0c8 : GOLD_LIGHT;
+    const second = kind === "cleric" || kind === "fanbearer" || kind === "monk" ? tc : dark(robe, 0.72);
+    // Shoulder mantle with a trimmed edge and a standing collar.
+    part(torso, GEO.softer, cloth(second), cw * 1.5, 0.3, cw * 0.98, 0, 0.7, 0);
+    part(torso, GEO.ring, gold(kind === "necromancer" ? 0x7a6a8a : GOLD), cw * 0.71, cw * 0.46, 0.5, 0, 0.64, 0, PI / 2, 0, 0);
+    // Clasp and amulet.
+    part(torso, GEO.sph, gold(), 0.05, 0.05, 0.03, 0, 0.8, cw * 0.36);
+    part(torso, GEO.sph, B(accent), 0.045, 0.055, 0.03, 0, 0.66, cw * 0.4);
+    part(torso, GEO.ring, gold(), 0.07, 0.07, 0.07, 0, 0.66, cw * 0.39);
+    // Sash with two tails, and a second band of trim above the hem.
+    band(torso, cloth(kind === "necromancer" ? 0x5a3a7a : tcl), cw * 0.52, 0.1, 0.11);
+    for (const sd of [-1, 1]) part(torso, GEO.bevel, cloth(kind === "necromancer" ? 0x5a3a7a : tcl), 0.09, 0.5 + (sd > 0 ? 0.1 : 0), 0.03, sd * 0.07 - 0.1, -0.16, cw * 0.38, 0.1, 0, sd * 0.05);
+    part(torso, GEO.ring, gold(kind === "necromancer" ? 0x7a6a8a : GOLD), 0.57, 0.57, 0.5, 0, -0.84, 0, PI / 2, 0, 0);
+    // Embroidered marks glowing around the hem.
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * PI * 2 + 0.35;
+      part(torso, GEO.sph, B(accent), 0.03, 0.045, 0.03, Math.sin(a) * 0.6, -0.94, Math.cos(a) * 0.6);
+    }
+    // Belt kit: a potion, a pouch and a scroll case.
+    part(torso, GEO.sph, B(kind === "necromancer" ? 0x7dff8a : kind === "frost" ? 0x9fe0ff : 0xff7a9a), 0.06, 0.07, 0.06, cw * 0.46, -0.02, cw * 0.22);
+    part(torso, GEO.cyl, M(0x6b4a2a), 0.025, 0.06, 0.025, cw * 0.46, 0.07, cw * 0.22);
+    part(torso, GEO.pillY, M(0xe6dcb0, 0.7), 0.07, 0.24, 0.07, -cw * 0.5, -0.04, -cw * 0.1, 0.5, 0, 0);
+    for (const sd of [-1, 1]) part(torso, GEO.sph, gold(), 0.04, 0.04, 0.04, -cw * 0.5, -0.04 + sd * 0.1, -cw * 0.1 + sd * 0.055);
+    // Wide sleeves: trim at the cuff and an under-sleeve at the wrist.
+    for (const a of arms) {
+      band(a, gold(kind === "necromancer" ? 0x7a6a8a : GOLD), foreR + 0.03, -0.6, 0.04);
+      band(a, cloth(second), armR + 0.012, -0.12, 0.07);
+    }
+    return;
+  }
+
+  if (wild) {
+    const fur = kind === "troll" ? 0x4a5a3a : kind === "orc" ? 0x3a3024 : 0x5a4028;
+    // Fur mantle: a ragged collar of tufts over the shoulders.
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * PI * 2;
+      const rx = cw * 0.6, rz = depth * 0.62;
+      part(torso, GEO.cone, M(i % 2 ? fur : dark(fur, 0.75), 0.95), 0.085, 0.24, 0.085, Math.sin(a) * rx, 0.76 - Math.abs(Math.cos(a)) * 0.04, Math.cos(a) * rz, PI - Math.cos(a) * 0.9, 0, Math.sin(a) * 0.9);
+    }
+    part(torso, GEO.softer, M(fur, 0.95), cw * 1.14, 0.14, depth * 1.14, 0, 0.8, 0);
+    // Tooth-and-bone necklace.
+    for (let i = 0; i < 7; i++) {
+      const u = (i - 3) / 3;
+      part(torso, GEO.cone, boneMat(), 0.028, 0.1 + (i === 3 ? 0.06 : 0), 0.028, u * cw * 0.3, 0.66 - (1 - u * u) * 0.09, cw * 0.34, PI, 0, 0);
+    }
+    // Hide kilt: front and back flaps with a fringe, over a heavy belt with a skull buckle.
+    band(torso, leather(LEATHER_DARK), ww * 0.56, 0.04, 0.12);
+    part(torso, GEO.sph, boneMat(), 0.075, 0.085, 0.05, 0, 0.04, depth * 0.56);
+    for (const sd of [-1, 1]) part(torso, GEO.sph, B(0x120d0a), 0.018, 0.022, 0.012, sd * 0.028, 0.055, depth * 0.56 + 0.045);
+    for (const f of [1, -1]) {
+      part(torso, GEO.cape, leather(0x5a4028), ww * 0.62, 0.42, 0.04, 0, -0.2, f * depth * 0.5, 0, f > 0 ? PI : 0, 0);
+      for (let i = 0; i < 5; i++) part(torso, GEO.cone, M(fur, 0.95), 0.045, 0.14, 0.045, (i - 2) * ww * 0.14, -0.44, f * depth * 0.52, PI, 0, 0);
+    }
+    // Arm rings, wrist wraps and war paint in the warband's colour.
+    for (const [i, a] of arms.entries()) {
+      band(a, gold(BRASS), armR + 0.02, -0.22, 0.05);
+      band(a, B(tc), armR + 0.012, -0.3, 0.03);
+      band(a, B(tc), armR + 0.012, -0.345, 0.018);
+      for (let k = 0; k < 3; k++) band(a, leather(k % 2 ? LEATHER : LEATHER_DARK), foreR + 0.012, -0.5 - k * 0.055, 0.04);
+      if (i === 0) part(a, GEO.cone, boneMat(), 0.04, 0.2, 0.04, 0.12, 0.02, 0, 0, 0, -1.1);
+    }
+    // Leg wraps.
+    for (const sh of shins) for (let k = 0; k < 3; k++) band(sh, leather(k % 2 ? 0x4a3a28 : 0x6b5236), shinR + 0.03, -0.08 * legs - k * 0.085 * legs, 0.05);
+    return;
+  }
+
+  if (plate) {
+    const metal = kind === "paladin" || kind === "valkyrie" ? steel(0xd8dbe2) : kind === "king" || kind === "zeus" || kind === "hoplite" ? gold(kind === "hoplite" ? 0xb8873a : GOLD) : kind === "samurai" || kind === "vampire" ? M(0x2a2228, 0.4, 0.6) : steel(0x9aa3b2);
+    // Arming skirt in the unit's colours, with tassets hanging over it.
+    part(torso, GEO.robe, cloth(tcd), ww * 0.78, 0.4, depth * 0.72, 0, -0.14, 0);
+    part(torso, GEO.ring, trimM, ww * 0.7, depth * 0.64, 0.5, 0, -0.33, 0, PI / 2, 0, 0);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * PI * 2 + PI / 6;
+      part(torso, GEO.bevel, metal, 0.19, 0.25, 0.04, Math.sin(a) * ww * 0.56, -0.1, Math.cos(a) * depth * 0.6, 0.16 * Math.cos(a), a, 0);
+      part(torso, GEO.sph, trimM, 0.022, 0.022, 0.016, Math.sin(a) * ww * 0.59, -0.02, Math.cos(a) * depth * 0.63);
+    }
+    // Gorget, breastplate ridge and rivets.
+    part(torso, GEO.pillY, metal, 0.32, 0.12, 0.32, 0, 0.9, 0);
+    part(torso, GEO.ring, trimM, 0.16, 0.16, 0.16, 0, 0.86, 0, PI / 2, 0, 0);
+    part(torso, GEO.blade, metal, 0.05, 0.05, 0.4, 0, 0.52, cw * 0.34, PI / 2, 0, 0);
+    for (const sd of [-1, 1]) for (let k = 0; k < 3; k++) part(torso, GEO.sph, trimM, 0.022, 0.022, 0.016, sd * cw * 0.4, 0.42 + k * 0.14, cw * 0.33);
+    // Back: crossed straps holding the plates together.
+    for (const sd of [-1, 1]) part(torso, GEO.bevel, leather(LEATHER_DARK), 0.05, 0.62, 0.03, 0, 0.5, -cw * 0.34, 0, 0, sd * 0.6);
+    for (const [i, a] of arms.entries()) {
+      const side = i === 0 ? 1 : -1;
+      // Pauldron lames stepping down the arm, rerebrace band, couter wing and a plated vambrace.
+      for (let k = 0; k < 3; k++) part(a, GEO.dome, metal, armR + 0.075 - k * 0.012, 0.09, armR + 0.08 - k * 0.012, side * 0.012 * k, -0.02 - k * 0.075, 0);
+      part(a, GEO.ring, trimM, armR + 0.05, armR + 0.055, 0.2, side * 0.024, -0.18, 0, PI / 2, 0, 0);
+      part(a, GEO.cone, metal, 0.07, 0.16, 0.03, side * 0.13, -0.39, -0.02, 0, 0, -side * PI / 2);
+      part(a, GEO.softer, metal, foreR * 1.5, 0.26, foreR * 2.3, side * 0.03, -0.52, 0);
+      band(a, trimM, foreR + 0.03, -0.42, 0.03);
+      band(a, trimM, foreR + 0.035, -0.63, 0.035);
+    }
+    for (const sh of shins) {
+      // Greave with a central crest, and a strap at the ankle.
+      part(sh, GEO.softer, metal, shinR * 1.7, 0.36 * legs, shinR * 1.5, 0, -0.2 * legs, 0.05);
+      part(sh, GEO.blade, trimM, 0.035, 0.03, 0.3 * legs, 0, -0.2 * legs, shinR + 0.06, PI / 2, 0, 0);
+      band(sh, leather(LEATHER_DARK), shinR + 0.012, -0.36 * legs, 0.04);
+    }
+    return;
+  }
+
+  // Field kit: tunic skirt, belt gear, neckerchief, bracers and cuffed boots.
+  const cloth1 = cloth(dark(w.armor, 0.86)), hide = leather(kind === "assassin" || kind === "ninja" ? 0x1b1c22 : LEATHER);
+  const stealth = kind === "assassin" || kind === "ninja";
+  part(torso, GEO.robe, cloth1, ww * 0.8, 0.4, depth * 0.76, 0, -0.14, 0);
+  part(torso, GEO.ring, cloth(stealth ? tcd : tcl), ww * 0.73, depth * 0.69, 0.5, 0, -0.32, 0, PI / 2, 0, 0);
+  // Stitched front seam with toggles.
+  part(torso, GEO.bevel, cloth(dark(w.armor, 0.7)), 0.05, 0.6, 0.03, 0, 0.46, cw * 0.325);
+  for (let k = 0; k < 3; k++) part(torso, GEO.pillX, M(0xd9c79a, 0.6), 0.09, 0.028, 0.03, 0, 0.3 + k * 0.15, cw * 0.34);
+  // Neckerchief: the surest way to tell friend from foe.
+  part(torso, GEO.pillY, cloth(tc), 0.36, 0.08, 0.34, 0, 0.855, 0);
+  part(torso, GEO.cone, cloth(tc), 0.17, 0.17, 0.04, 0.03, 0.74, cw * 0.335, PI, 0, 0.12);
+  if (stealth) part(torso, GEO.cape, cloth(tc), 0.2, 0.62, 0.03, -0.1, 0.55, -cw * 0.38, 0.25, 0, 0.12);
+  // Belt gear: two pouches, a rolled blanket at the back and a knife.
+  for (const sd of [-1, 1]) {
+    part(torso, GEO.softer, hide, 0.13, 0.15, 0.1, sd * ww * 0.44, -0.03, depth * 0.3);
+    part(torso, GEO.bevel, leather(LEATHER_DARK), 0.135, 0.06, 0.105, sd * ww * 0.44, 0.03, depth * 0.3);
+    part(torso, GEO.sph, gold(BRASS), 0.02, 0.02, 0.014, sd * ww * 0.44, 0.0, depth * 0.3 + 0.055);
+  }
+  part(torso, GEO.pillX, cloth(dark(tc, 0.7)), ww * 0.86, 0.13, 0.13, 0, 0.06, -depth * 0.56);
+  for (const sd of [-1, 1]) part(torso, GEO.bevel, leather(LEATHER_DARK), 0.035, 0.15, 0.15, sd * ww * 0.26, 0.06, -depth * 0.56);
+  part(torso, GEO.pillY, leather(LEATHER_DARK), 0.05, 0.24, 0.035, -ww * 0.3, -0.12, depth * 0.44, 0.25, 0, 0.3);
+  part(torso, GEO.sph, steel(STEEL_LIGHT), 0.03, 0.03, 0.03, -ww * 0.34, 0.0, depth * 0.47);
+  for (const [i, a] of arms.entries()) {
+    // One stitched shoulder guard, rolled sleeve and a laced bracer.
+    if (i === 0) {
+      part(a, GEO.dome, hide, armR + 0.06, 0.11, armR + 0.065, 0, -0.02, 0);
+      part(a, GEO.ring, leather(LEATHER_DARK), armR + 0.06, armR + 0.065, 0.2, 0, -0.02, 0, PI / 2, 0, 0);
+      for (let k = 0; k < 4; k++) part(a, GEO.sph, gold(BRASS), 0.018, 0.018, 0.018, Math.sin(k * 1.57 + 0.8) * (armR + 0.045), 0.02, Math.cos(k * 1.57 + 0.8) * (armR + 0.05));
+    }
+    band(a, cloth1, armR + 0.016, -0.3, 0.07);
+    part(a, GEO.pillY, hide, foreR * 2.2, 0.2, foreR * 2.3, 0, -0.52, 0);
+    for (let k = 0; k < 3; k++) part(a, GEO.pillX, M(0xd9c79a, 0.6), 0.1, 0.018, 0.02, 0, -0.46 - k * 0.055, foreR + 0.03, 0, 0, k % 2 ? 0.5 : -0.5);
+  }
+  for (const sh of shins) {
+    // Folded boot cuff with a buckled strap.
+    band(sh, hide, shinR + 0.035, -0.26 * legs, 0.1);
+    band(sh, leather(LEATHER_DARK), shinR + 0.02, -0.36 * legs, 0.035);
+    part(sh, GEO.bevel, gold(BRASS), 0.05, 0.045, 0.02, 0.05, -0.36 * legs, shinR + 0.02);
+  }
 }
 
 function detailTorso(kind: HumanKind, t: THREE.Group, cw: number, tc: number) {
@@ -1955,6 +2161,16 @@ for (const [mat, gain] of [[MAT_STD, 0.5], [MAT_METAL, 0.3]] as const) {
     );
   };
 }
+
+/**
+ * Ink outline: the same geometry drawn inside-out, pushed out along its normals.
+ * It frames every unit against the ground and makes the silhouettes read at a glance.
+ */
+export const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x10151c, side: THREE.BackSide });
+OUTLINE_MAT.onBeforeCompile = shader => {
+  shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed += normalize(normal) * 0.015;");
+};
+export function hasOutline(material: THREE.Material) { return material !== MAT_BASIC; }
 
 /** Gives every unit a shared reflection probe. Metal mirrors it; cloth and skin only pick up a soft fill. */
 export function getRigEnvironment() { return MAT_METAL.envMap; }

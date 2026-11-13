@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import type { UnitRig } from "./rigs";
+import { OUTLINE_MAT, hasOutline, type UnitRig } from "./rigs";
 
-interface Batch { mesh: THREE.InstancedMesh }
+interface Batch { mesh: THREE.InstancedMesh; outline: THREE.InstancedMesh | null }
 interface Slot { group: THREE.Group; batch: Batch }
 interface Entry { rig: UnitRig; slots: Slot[]; flash: number }
 const TINT = new THREE.Color();
@@ -28,7 +28,8 @@ export class UnitBatchRenderer {
       const key = `${part.geometry.uuid}:${part.material.uuid}`;
       let batch = this.batches.get(key);
       if (!batch) {
-        batch = { mesh: this.createMesh(part.geometry, part.material, 32) };
+        const mesh = this.createMesh(part.geometry, part.material, 32);
+        batch = { mesh, outline: this.createOutline(mesh) };
         this.batches.set(key, batch);
       }
       slots.push({ group: part.group, batch });
@@ -48,6 +49,25 @@ export class UnitBatchRenderer {
     return mesh;
   }
 
+  /** The outline shares the unit mesh's instance matrices, so it costs no extra CPU per frame. */
+  private createOutline(mesh: THREE.InstancedMesh) {
+    if (!hasOutline(mesh.material as THREE.Material)) return null;
+    const outline = new THREE.InstancedMesh(mesh.geometry, OUTLINE_MAT, 1);
+    outline.instanceMatrix = mesh.instanceMatrix;
+    outline.count = 0;
+    outline.frustumCulled = false;
+    outline.visible = this.outlines;
+    this.scene.add(outline);
+    return outline;
+  }
+
+  private outlines = true;
+  /** Outlines double the triangles drawn; the light graphics setting turns them off. */
+  setOutlines(on: boolean) {
+    this.outlines = on;
+    for (const { outline } of this.batches.values()) if (outline) outline.visible = on && outline.count > 0;
+  }
+
   private grow(batch: Batch) {
     const old = batch.mesh;
     const next = this.createMesh(old.geometry, old.material as THREE.Material, old.instanceMatrix.count * 2);
@@ -56,6 +76,7 @@ export class UnitBatchRenderer {
     this.scene.remove(old);
     old.dispose();
     batch.mesh = next;
+    if (batch.outline) { this.scene.remove(batch.outline); batch.outline.dispose(); batch.outline = this.createOutline(next); }
   }
 
   sync() {
@@ -75,7 +96,8 @@ export class UnitBatchRenderer {
         target.count = index + 1;
       }
     }
-    for (const { mesh } of this.batches.values()) {
+    for (const { mesh, outline } of this.batches.values()) {
+      if (outline) { outline.count = mesh.count; outline.visible = this.outlines && mesh.count > 0; }
       mesh.visible = mesh.count > 0;
       if (mesh.count > 0) {
         mesh.instanceMatrix.clearUpdateRanges();
@@ -99,12 +121,15 @@ export class UnitBatchRenderer {
 
   clear() {
     this.entries.clear();
-    for (const { mesh } of this.batches.values()) { mesh.count = 0; mesh.visible = false; }
+    for (const { mesh, outline } of this.batches.values()) { mesh.count = 0; mesh.visible = false; if (outline) { outline.count = 0; outline.visible = false; } }
   }
 
   dispose() {
     this.clear();
-    for (const { mesh } of this.batches.values()) { this.scene.remove(mesh); mesh.dispose(); }
+    for (const { mesh, outline } of this.batches.values()) {
+      this.scene.remove(mesh); mesh.dispose();
+      if (outline) { this.scene.remove(outline); outline.dispose(); }
+    }
     this.batches.clear();
   }
 }

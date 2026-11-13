@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Shield } from 'lucide-react';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { buildUnitRig, getRigEnvironment, setRigEnvironment, type UnitRig } from '../game/rigs';
+import { OUTLINE_MAT, buildUnitRig, getRigEnvironment, hasOutline, setRigEnvironment, type UnitRig } from '../game/rigs';
 import { DEFS, type UnitKind } from '../game/units';
 
 const cache = new Map<UnitKind, string>();
@@ -10,7 +10,10 @@ let portraitRenderer: THREE.WebGLRenderer | null = null;
 
 function addModel(scene: THREE.Scene, kind: UnitKind): UnitRig {
   const rig = buildUnitRig(kind, 0);
-  for (const part of rig.parts) part.group.add(new THREE.Mesh(part.geometry, part.material));
+  for (const part of rig.parts) {
+    part.group.add(new THREE.Mesh(part.geometry, part.material));
+    if (hasOutline(part.material)) part.group.add(new THREE.Mesh(part.geometry, OUTLINE_MAT));
+  }
   rig.root.rotation.y = -0.35;
   scene.add(rig.root);
   return rig;
