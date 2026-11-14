@@ -9,8 +9,8 @@
 #   CLOUDFLARE_API_TOKEN   API token with "Edit Cloudflare Workers" permission
 #   CLOUDFLARE_ACCOUNT_ID  Cloudflare account ID
 #
-# Works for Vite projects that build to a single file via vite-plugin-singlefile
-# (dist/index.html). See deploy/worker.js.
+# Works for Vite projects that build to a single file (dist/index.html).
+# deploy/make-worker.sh serves dist/index.html plus any images/fonts under dist/.
 
 name: Deploy games to Cloudflare Workers
 
@@ -115,14 +115,6 @@ jobs:
           npm run build
           test -f dist/index.html || { echo "::error::dist/index.html not found. This project must build to a single file (vite-plugin-singlefile)."; exit 1; }
 
-          cp "$GITHUB_WORKSPACE/deploy/worker.js" worker.js
-          cat > wrangler.jsonc <<JSON
-          {
-            "name": "$NAME",
-            "main": "worker.js",
-            "compatibility_date": "2026-11-01",
-            "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": false }]
-          }
-          JSON
+          bash "$GITHUB_WORKSPACE/deploy/make-worker.sh" "$NAME"
 
           npx --yes wrangler@4.162.0 deploy
