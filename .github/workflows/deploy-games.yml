@@ -1,0 +1,120 @@
+# Deploy game ZIPs to Cloudflare Workers.
+#
+# Upload a new ZIP to `eb/` (Epic Battle) or `mc/` (Minecraft 1.21) on `main`,
+# and this workflow unzips it, runs `npm ci && npm run build`, and deploys:
+#   eb/*.zip -> https://epic-battle.<subdomain>.workers.dev
+#   mc/*.zip -> https://minecraft-121.<subdomain>.workers.dev
+#
+# Requires repository secrets (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN   API token with "Edit Cloudflare Workers" permission
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare account ID
+#
+# Works for Vite projects that build to a single file (dist/index.html).
+# deploy/make-worker.sh serves dist/index.html plus any images/fonts under dist/.
+
+name: Deploy games to Cloudflare Workers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "eb/*.zip"
+      - "mc/*.zip"
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Which game to deploy (uses the newest ZIP in that folder)"
+        required: true
+        type: choice
+        options: [eb, mc]
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      any: ${{ steps.plan.outputs.any }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_PROJECT: ${{ inputs.project }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          zero="0000000000000000000000000000000000000000"
+          entries=()
+          for p in eb mc; do
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              [ "$INPUT_PROJECT" = "$p" ] || continue
+              zip=$(ls "$p"/*.zip 2>/dev/null | tail -n1 || true)
+            elif [ "$BEFORE" = "$zero" ]; then
+              zip=$(ls "$p"/*.zip 2>/dev/null | tail -n1 || true)
+            else
+              zip=$(git diff --name-only --diff-filter=AM "$BEFORE" "$SHA" -- "$p" | grep '\.zip$' | tail -n1 || true)
+            fi
+            [ -n "${zip:-}" ] || continue
+            case "$p" in
+              eb) name=epic-battle ;;
+              mc) name=minecraft-121 ;;
+            esac
+            entries+=("{\"project\":\"$p\",\"name\":\"$name\",\"zip\":\"$zip\"}")
+          done
+          if [ ${#entries[@]} -eq 0 ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+            echo "No game ZIP changed; nothing to deploy."
+            exit 0
+          fi
+          joined=$(IFS=,; echo "${entries[*]}")
+          echo "any=true" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"include\":[$joined]}" >> "$GITHUB_OUTPUT"
+          echo "Deploying: $joined"
+
+  deploy:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    concurrency:
+      group: deploy-game-${{ matrix.project }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unzip, build and deploy
+        env:
+          ZIP: ${{ matrix.zip }}
+          NAME: ${{ matrix.name }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/game"
+          rm -rf "$work" && mkdir -p "$work"
+          unzip -q "$GITHUB_WORKSPACE/$ZIP" -d "$work"
+
+          # The ZIP may hold files at the top level or inside one folder.
+          pkg=$(find "$work" -maxdepth 3 -name package.json -not -path '*/node_modules/*' | head -n1)
+          root=$(dirname "$pkg")
+          cd "$root"
+
+          npm ci
+          npm run build
+          test -f dist/index.html || { echo "::error::dist/index.html not found. This project must build to a single file (vite-plugin-singlefile)."; exit 1; }
+
+          bash "$GITHUB_WORKSPACE/deploy/make-worker.sh" "$NAME"
+
+          npx --yes wrangler@4.162.0 deploy
