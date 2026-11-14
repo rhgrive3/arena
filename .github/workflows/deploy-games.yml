@@ -58,7 +58,7 @@ jobs:
             elif [ "$BEFORE" = "$zero" ]; then
               zip=$(ls "$p"/*.zip 2>/dev/null | tail -n1 || true)
             else
-              zip=$(git diff --name-only --diff-filter=AM "$BEFORE" "$SHA" -- "$p" | grep '\.zip$' | tail -n1 || true)
+              zip=$(git diff --name-only --no-renames --diff-filter=AM "$BEFORE" "$SHA" -- "$p" | grep '\.zip$' | tail -n1 || true)
             fi
             [ -n "${zip:-}" ] || continue
             case "$p" in
